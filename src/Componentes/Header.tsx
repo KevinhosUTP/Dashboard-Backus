@@ -15,6 +15,8 @@ interface Props {
   onReporte: () => void;
   onIniciar: () => void;
   onCerrarSesion: () => void;
+  onCancelarSeleccion?: () => void;
+  textoSeleccionMovil?: string | null;
 }
 
 // Componente reutilizable de toggle deslizante
@@ -81,6 +83,8 @@ export const Header = ({
   darkMode: dm, simulacionActiva, config, rol, nombreUsuario,
   onToggleDarkMode, onToggleModoAyuda, modoAyuda,
   onReporte, onIniciar, onCerrarSesion,
+  onCancelarSeleccion,
+  textoSeleccionMovil = null,
 }: Props) => {
   const rolColor = rol === 'admin' ? '#a78bfa' : '#38bdf8';
   const rolBg = rol === 'admin' ? 'rgba(124,58,237,0.18)' : 'rgba(14,165,233,0.18)';
@@ -92,7 +96,7 @@ export const Header = ({
   const controlesBtnStyle = { fontSize: 'clamp(0.7rem, 1vw, 0.875rem)' };
 
   return (
-    <header className="w-full z-50 overflow-hidden bg-[#0f172a] shadow-md flex flex-col max-h-[105px] lg:max-h-none">
+    <header className="w-full z-50 overflow-hidden bg-[#0f172a] shadow-md flex flex-col max-h-[132px] lg:max-h-none">
       <div className="lg:hidden flex flex-col w-full">
         <div className="flex items-center justify-between w-full px-3 pt-1.5 pb-0.5">
           <div className="flex items-center gap-2 min-w-0">
@@ -167,6 +171,21 @@ export const Header = ({
             🚪 Salir
           </button>
         </div>
+
+        {textoSeleccionMovil && (
+          <div className="w-full px-3 py-1 bg-yellow-500/20 border-b border-yellow-500/40 flex items-center justify-between">
+            <span className="text-yellow-300 text-xs font-medium">
+              {textoSeleccionMovil}
+            </span>
+            <button
+              className="text-yellow-400 text-xs underline"
+              onClick={onCancelarSeleccion}
+              type="button"
+            >
+              Cancelar
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="hidden lg:flex items-center justify-between px-3 lg:px-6 py-2 lg:py-3">

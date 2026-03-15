@@ -1,16 +1,6 @@
 // src/Componentes/SimuladorMapa.tsx
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { flushSync } from 'react-dom';
-import {
-  DndContext,
-  type DragEndEvent,
-  type DragStartEvent,
-  MouseSensor,
-  PointerSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
 import type {
   Camion, ConfigSimulador, StatsSimulador,
   EstadoAlerta,
@@ -39,7 +29,7 @@ const TIEMPOS_CLIENTE = { tiempoAmarillo: 60, tiempoRojo: 120 } as const;
 const TIEMPOS_AJUSTE_REAL = { tiempoAmarillo: 61, tiempoRojo: 121 } as const;
 const INTERVALO_GENERACION_SIM_MS = 7_000;
 const INTERVALO_POLLING_MS = 6_000;
-const MOBILE_HEADER_HEIGHT = 105;
+const MOBILE_HEADER_HEIGHT = 132;
 const MOBILE_QUEUE_HEIGHT = 176;
 const MOBILE_QUEUE_HEADER_HEIGHT = 40;
 const MOBILE_CREDITS_HEIGHT = 38;
@@ -193,7 +183,7 @@ const SimuladorMapa = ({
   const [alertaMaxIncidencias, setAlertaMaxIncidencias] = useState(false);
   const [isMobile, setIsMobile]                         = useState(window.innerWidth < 1024);
   const [isCompactMobile, setIsCompactMobile]           = useState(window.innerWidth < 768);
-  const [camionDetalle, setCamionDetalle]               = useState<Camion | null>(null);
+  const [camionSeleccionado, setCamionSeleccionado]     = useState<Camion | null>(null);
 
   const colaRef        = useRef<Camion[]>([]);
   const enProcesoRef   = useRef<Record<string, Camion>>({});
@@ -214,15 +204,6 @@ const SimuladorMapa = ({
 
   const [panelTurnos,    setPanelTurnos]    = useState<VwDashboardTurnos | null>(null);
   const [panelPromedio,  setPanelPromedio]  = useState<VwPromedioPatioNeto | null>(null);
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
-    }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 8 },
-    }),
-    useSensor(MouseSensor),
-  );
   const modoActual = config.modo;
   const rolActual = config.rol;
   const tiempoAmarilloActual = config.tiempoAmarillo;
@@ -247,10 +228,11 @@ const SimuladorMapa = ({
   }, []);
 
   useEffect(() => {
-    if (!simulacionActiva || !isCompactMobile) {
-      setCamionDetalle(null);
+    if (!simulacionActiva || !isMobile) {
+      setCamionSeleccionado(null);
+      setCamionArrastrando(null);
     }
-  }, [simulacionActiva, isCompactMobile]);
+  }, [isMobile, simulacionActiva]);
 
   // ── useEffect principal: switch entre Modo Ajuste Real y Modo Simulación ──
   useEffect(() => {
@@ -345,20 +327,17 @@ const SimuladorMapa = ({
     setCamionArrastrando(camion);
   };
 
-  const handleDragStartDnd = useCallback((event: DragStartEvent) => {
-    if (!simulacionActiva) return;
-    const truckId = event.active.data.current?.truckId as string | undefined;
-    if (truckId) {
-      const camion = colaRef.current.find(c => c.id === truckId);
-      if (camion) setCamionArrastrando(camion);
+  const handleTapCamion = (camion: Camion) => {
+    if (!isMobile || !simulacionActiva) return;
+    if (camionSeleccionado?.id === camion.id) {
+      setCamionSeleccionado(null);
+      setCamionArrastrando(null);
       return;
     }
 
-    const fromBahia = event.active.data.current?.fromBahia as string | undefined;
-    if (!fromBahia) return;
-    const camion = enProcesoRef.current[fromBahia];
-    if (camion) setCamionArrastrando(camion);
-  }, [simulacionActiva]);
+    setCamionSeleccionado(camion);
+    setCamionArrastrando(camion);
+  };
 
   const registrarFinalizacionUnica = useCallback((camion: Camion): boolean => {
     if (camionesFinalizados.current.has(camion.id)) return false;
@@ -428,32 +407,35 @@ const SimuladorMapa = ({
     notify(`🔄 ${camion.placa} → ${BAHIAS_CONFIG[toBahiaId].nombre}`, 'info');
   };
 
-  const handleDragEndDnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over) {
+  const handleTapBahia = (bahiaId: string) => {
+    if (!isMobile || !simulacionActiva || !camionSeleccionado) return;
+    const fromBahiaId = camionSeleccionado.bahiaActual;
+
+    if (fromBahiaId && fromBahiaId !== bahiaId) {
+      const resultado = validarAsignacion({ ...camionSeleccionado, bahiaActual: undefined }, bahiaId);
+      if (resultado !== true) {
+        notify(resultado, 'error');
+        return;
+      }
+      if (enProceso[bahiaId]) {
+        notify('Bahía destino ocupada', 'error');
+        return;
+      }
+      handleDropFromBahia(fromBahiaId, bahiaId);
+      setCamionSeleccionado(null);
       setCamionArrastrando(null);
       return;
     }
 
-    const truckId = active.data.current?.truckId as string | undefined;
-    const fromBahia = active.data.current?.fromBahia as string | undefined;
-    const toBahia = String(over.id);
-
-    if (truckId) {
-      const camion = colaRef.current.find(c => c.id === truckId);
-      if (!camion) {
-        setCamionArrastrando(null);
-        return;
-      }
-      flushSync(() => setCamionArrastrando(camion));
-      handleDrop(toBahia);
+    const resultado = validarAsignacion(camionSeleccionado, bahiaId);
+    if (resultado !== true) {
+      notify(resultado, 'error');
       return;
     }
 
-    if (fromBahia && fromBahia !== toBahia) {
-      handleDropFromBahia(fromBahia, toBahia);
-    }
-
+    flushSync(() => setCamionArrastrando(camionSeleccionado));
+    handleDrop(bahiaId);
+    setCamionSeleccionado(null);
     setCamionArrastrando(null);
   };
 
@@ -506,7 +488,8 @@ const SimuladorMapa = ({
   const handleCerrarSesion = () => {
     if (window.confirm('¿Deseas cerrar la sesión?')) {
       camionesFinalizados.current.clear();
-      setCamionDetalle(null);
+      setCamionSeleccionado(null);
+      setCamionArrastrando(null);
       setSimulacionActiva(false); setCola([]); setEnProceso({});
       notify('👋 Sesión cerrada', 'info');
       // Pequeño delay para que el toast sea visible antes de volver al login
@@ -515,8 +498,6 @@ const SimuladorMapa = ({
   };
 
   const dm = darkMode;
-  const abrirDetalleCamion = (camion: Camion) => setCamionDetalle(camion);
-  const cerrarDetalleCamion = () => setCamionDetalle(null);
   const mobileMainHeight = `calc(100vh - ${MOBILE_HEADER_HEIGHT + MOBILE_QUEUE_HEIGHT + MOBILE_CREDITS_HEIGHT}px)`;
   const mobileQueueBodyHeight = `calc(${MOBILE_QUEUE_HEIGHT}px - ${MOBILE_QUEUE_HEADER_HEIGHT}px)`;
 
@@ -527,6 +508,14 @@ const SimuladorMapa = ({
   const getEstadoOperacion = (camion: Camion) => (
     camion.operacionCodigo === 'C' ? 'CARGA' : 'DESCARGA'
   );
+  const textoSeleccionMovil = useMemo(() => {
+    if (!camionSeleccionado) return null;
+    const bahiaOrigen = camionSeleccionado.bahiaActual;
+    if (bahiaOrigen && BAHIAS_CONFIG[bahiaOrigen]) {
+      return `🚛 ${camionSeleccionado.placa} en ${BAHIAS_CONFIG[bahiaOrigen].nombre} — toca otra bahía para mover`;
+    }
+    return `🚛 ${camionSeleccionado.placa} en cola — toca una bahía libre para asignar`;
+  }, [camionSeleccionado]);
   const semaforoLimites = config.modo === 'real'
     ? TIEMPOS_AJUSTE_REAL
     : { tiempoAmarillo: config.tiempoAmarillo, tiempoRojo: config.tiempoRojo };
@@ -707,13 +696,21 @@ const SimuladorMapa = ({
           onReporte={() => setShowReport(true)}
           onIniciar={() => {
             if (!simulacionActiva) setShowConfig(true);
-            else { setSimulacionActiva(false); setShowReport(true); }
+            else {
+              setCamionSeleccionado(null);
+              setCamionArrastrando(null);
+              setSimulacionActiva(false); setShowReport(true);
+            }
           }}
           onCerrarSesion={handleCerrarSesion}
+          textoSeleccionMovil={isMobile ? textoSeleccionMovil : null}
+          onCancelarSeleccion={() => {
+            setCamionSeleccionado(null);
+            setCamionArrastrando(null);
+          }}
         />
       </div>
 
-      <DndContext sensors={sensors} onDragStart={handleDragStartDnd} onDragEnd={handleDragEndDnd}>
       <main id="mapa-area" className={`flex-1 w-full relative ${isMobile ? 'overflow-y-auto' : 'overflow-hidden'}`}>
         {!isMobile && (
           <>
@@ -750,11 +747,15 @@ const SimuladorMapa = ({
                     bahiaId={id} config={bay}
                     camion={enProceso[id] || null}
                     camionArrastrando={camionArrastrando}
+                    camionSeleccionado={camionSeleccionado}
                     validarFn={validarAsignacion}
                     onDrop={handleDrop}
                     onDropFromBahia={handleDropFromBahia}
+                    onTapBahia={handleTapBahia}
+                    onTapCamionBahia={handleTapCamion}
                     onFinalizar={handleFinalizar}
                     simulacionActiva={simulacionActiva}
+                    isMobile={isMobile}
                     modoConfig={config}
                     formatTiempo={formatTiempo}
                     darkMode={darkMode}
@@ -793,11 +794,15 @@ const SimuladorMapa = ({
                 bahiaId={id} config={bay}
                 camion={enProceso[id] || null}
                 camionArrastrando={camionArrastrando}
+                camionSeleccionado={camionSeleccionado}
                 validarFn={validarAsignacion}
                 onDrop={handleDrop}
                 onDropFromBahia={handleDropFromBahia}
+                onTapBahia={handleTapBahia}
+                onTapCamionBahia={handleTapCamion}
                 onFinalizar={handleFinalizar}
                 simulacionActiva={simulacionActiva}
+                isMobile={isMobile}
                 modoConfig={config}
                 formatTiempo={formatTiempo}
                 darkMode={darkMode}
@@ -874,10 +879,10 @@ const SimuladorMapa = ({
                   type="button"
                   key={camion.id}
                   className={`shrink-0 flex flex-col items-center rounded-lg px-3 py-2 min-w-[72px]
-                    border select-none ${
+                    border select-none ${camionSeleccionado?.id === camion.id ? 'ring-2 ring-yellow-400 scale-105 ' : ''}${
                       dm ? 'bg-gray-800 border-gray-600' : 'bg-slate-200 border-slate-300'
                     }`}
-                  onClick={() => abrirDetalleCamion(camion)}
+                  onClick={() => handleTapCamion(camion)}
                 >
                   <div className={`w-2 h-2 rounded-full mb-1 ${getSemaforoClase(camion.estadoAlerta)}`} />
                   <span className={`font-bold text-xs leading-tight ${dm ? 'text-white' : 'text-slate-800'}`}>
@@ -909,6 +914,9 @@ const SimuladorMapa = ({
                   onDragStart={handleDragStart}
                   onDragEnd={() => setCamionArrastrando(null)}
                   darkMode={darkMode}
+                  dragHabilitado={simulacionActiva && !isMobile}
+                  onTap={isMobile ? () => handleTapCamion(c) : undefined}
+                  seleccionado={isMobile && camionSeleccionado?.id === c.id}
                 />
               ))}
               {cola.length === 0 && simulacionActiva && (
@@ -920,35 +928,6 @@ const SimuladorMapa = ({
           </div>
         )}
       </footer>
-      </DndContext>
-
-      {isCompactMobile && camionDetalle && (
-        <>
-          <button type="button" className="fixed inset-0 bg-black/60 z-40" onClick={cerrarDetalleCamion} aria-label="Cerrar detalle del camión" />
-          <div className={`fixed bottom-0 left-0 right-0 rounded-t-2xl p-4 z-50 ${dm ? 'bg-gray-900' : 'bg-white border-t border-slate-200'}`}>
-            <button
-              onClick={cerrarDetalleCamion}
-              className={`absolute top-3 right-3 text-lg leading-none ${dm ? 'text-slate-300' : 'text-slate-500'}`}
-              aria-label="Cerrar detalle"
-            >
-              ×
-            </button>
-            <div className="pr-8">
-              <h3 className={`font-extrabold text-sm ${dm ? 'text-white' : 'text-slate-900'}`}>{camionDetalle.placa}</h3>
-              <div className={`mt-2 space-y-1 text-xs ${dm ? 'text-slate-300' : 'text-slate-600'}`}>
-                <div><span className="font-semibold">Tipo:</span> {camionDetalle.tipoCodigo}</div>
-                <div><span className="font-semibold">Producto:</span> {camionDetalle.producto}</div>
-                <div><span className="font-semibold">Estado:</span> {getEstadoOperacion(camionDetalle)}</div>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold">Semáforo:</span>
-                  <span className={`inline-block w-2 h-2 rounded-full ${getSemaforoClase(camionDetalle.estadoAlerta)}`} />
-                  <span className="capitalize">{camionDetalle.estadoAlerta}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
 
       <Footer />
 
@@ -960,6 +939,8 @@ const SimuladorMapa = ({
             : { ...c, rol: 'admin' };
           setConfig(configFinal); setShowConfig(false); setSimulacionActiva(true);
           camionesFinalizados.current.clear();
+          setCamionSeleccionado(null);
+          setCamionArrastrando(null);
           setCola([]); setEnProceso({});
           setStats({ atendidosTurno1: 0, atendidosTurno2: 0, atendidosTurno3: 0, total: 0, tiemposTotalPatio: [] });
           notify('🚀 Sesión iniciada', 'success');

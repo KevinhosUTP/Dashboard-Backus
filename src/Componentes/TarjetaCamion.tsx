@@ -1,7 +1,6 @@
 // src/Componentes/TarjetaCamion.tsx
 // Carta de camión en la cola inferior — Tailwind CSS + Drag & Drop
-import { useEffect, useRef, useState } from 'react';
-import { useDraggable } from '@dnd-kit/core';
+import { useEffect, useState } from 'react';
 import type { Camion, ConfigSimulador } from '../types';
 import { getColorEstado, NOMBRES_TIPO_CAMION } from './bahiasConfig';
 
@@ -13,6 +12,9 @@ interface Props {
   onDragStart: (c: Camion) => void;
   onDragEnd: () => void;
   darkMode?: boolean;
+  dragHabilitado?: boolean;
+  onTap?: () => void;
+  seleccionado?: boolean;
 }
 
 const TarjetaCamion = ({
@@ -23,26 +25,12 @@ const TarjetaCamion = ({
   onDragStart,
   onDragEnd,
   darkMode = true,
+  dragHabilitado,
+  onTap,
+  seleccionado = false,
 }: Props) => {
   const [now, setNow] = useState(() => Date.now());
-  const prevDraggingRef = useRef(false);
   const dm = darkMode;
-
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: `truck-${c.id}`,
-    disabled: !simulacionActiva,
-    data: { truckId: c.id },
-  });
-
-  useEffect(() => {
-    if (isDragging && !prevDraggingRef.current) {
-      onDragStart(c);
-    }
-    if (!isDragging && prevDraggingRef.current) {
-      onDragEnd();
-    }
-    prevDraggingRef.current = isDragging;
-  }, [c, isDragging, onDragEnd, onDragStart]);
 
   // Ticker para actualizar el tiempo en pantalla
   useEffect(() => {
@@ -54,25 +42,25 @@ const TarjetaCamion = ({
   const color = getColorEstado(c.estadoAlerta);
   const ms = now - c.tiempoLlegadaCola;
   const tieneIncidencia = (c.incidencias ?? 0) > 0;
-  const dragStyle = {
-    transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined,
-    opacity: isDragging ? 0.5 : 1,
-    touchAction: 'none' as const,
-    cursor: simulacionActiva ? 'grab' : 'default',
-  };
+  const puedeArrastrar = dragHabilitado ?? simulacionActiva;
 
   return (
     <div
-      ref={setNodeRef}
-      {...listeners}
-      {...attributes}
+      draggable={puedeArrastrar}
+      onDragStart={e => {
+        if (!puedeArrastrar) return;
+        e.dataTransfer.setData('truckId', c.id);
+        onDragStart(c);
+      }}
+      onDragEnd={onDragEnd}
+      onClick={onTap}
       className={`
         relative w-full rounded-[9px] select-none
         transition-all duration-300 ease-in-out
-        ${simulacionActiva ? 'cursor-grab active:cursor-grabbing hover:scale-[1.02]' : 'cursor-default'}
+        ${puedeArrastrar ? 'cursor-grab active:cursor-grabbing hover:scale-[1.02]' : onTap ? 'cursor-pointer' : 'cursor-default'}
+        ${seleccionado ? 'ring-2 ring-yellow-400 scale-105' : ''}
       `}
       style={{
-        ...dragStyle,
         background: dm ? 'rgba(10,16,30,0.92)' : 'rgba(255,255,255,0.95)',
         border: `2px solid ${color}`,
         padding: 'clamp(7px,0.8vh,10px) clamp(8px,0.9vw,12px)',
