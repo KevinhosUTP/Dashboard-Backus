@@ -303,7 +303,7 @@ const Row = ({ label, value }: { label: string; value: string }) => (
 
 const s: Record<string, React.CSSProperties> = {
   overlay:      { position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.78)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 },
-  modal:        { background: '#0f172a', border: '1px solid rgba(148,163,184,0.18)', borderTop: '3px solid #f59e0b', borderRadius: 14, padding: '24px 26px', width: '100%', maxWidth: 460, boxShadow: '0 24px 64px rgba(0,0,0,0.75)' },
+  modal:        { background: '#0f172a', borderTop: '3px solid #f59e0b', borderRadius: 14, padding: '24px 26px', width: '100%', maxWidth: 460, boxShadow: '0 24px 64px rgba(0,0,0,0.75)' },
   header:       { display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 18 },
   title:        { color: '#f1f5f9', fontWeight: 700, fontSize: '1rem' },
   sub:          { color: '#64748b', fontSize: '0.76rem', marginTop: 2 },

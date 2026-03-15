@@ -125,52 +125,38 @@ const ModalReporte = ({ show, modo, stats, panelPromedio: promProp, panelTurnos:
   ];
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 200,
-      background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}>
-      <div style={{
-        background: '#0f172a', border: '1px solid rgba(148,163,184,0.2)',
-        borderRadius: 16, padding: '32px 36px', minWidth: 480,
-        boxShadow: '0 20px 60px rgba(0,0,0,0.7)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-          <h2 style={{ color: '#f1f5f9', fontWeight: 700, fontSize: '1.3rem', margin: 0 }}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-4 px-4 pb-4 bg-black/60 overflow-y-auto">
+      <div className="w-full max-w-lg mx-auto bg-[#0f172a] rounded-2xl p-4 md:p-6 shadow-2xl">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-base md:text-xl font-bold text-white mb-1">
             📊 Reporte de Sesión
           </h2>
           {cargando && modo === 'real' && (
             <span style={{ color: '#64748b', fontSize: '0.75rem' }}>Actualizando…</span>
           )}
         </div>
-        <p style={{ color: '#64748b', fontSize: '0.8rem', marginBottom: 24, marginTop: 4 }}>
+        <p className="text-slate-400 mb-4" style={{ fontSize: 'clamp(0.65rem, 2vw, 0.8rem)' }}>
           {modo === 'simulacion'
             ? 'Datos de la sesión de simulación actual'
             : 'Datos del día obtenidos desde la base de datos'}
         </p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 24 }}>
+        <div className="grid grid-cols-2 gap-3 mb-4">
           {cards.map(card => (
-            <div key={card.label} style={{
-              background: `rgba(${hexToRgb(card.color)}, 0.08)`,
-              border: `1px solid rgba(${hexToRgb(card.color)}, 0.25)`,
-              borderRadius: 10, padding: '14px 16px',
-            }}>
-              <div style={{ fontSize: '1.4rem', marginBottom: 4 }}>{card.icon}</div>
-              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: card.color }}>
+            <div key={card.label} className="bg-[#1e293b] rounded-xl p-3 flex flex-col gap-1">
+              <div className="text-2xl md:text-3xl mb-1">{card.icon}</div>
+              <div className="font-bold text-white" style={{ fontSize: 'clamp(1.2rem, 5vw, 2rem)' }}>
                 {card.value}
               </div>
-              <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: 2 }}>
+              <div className="text-slate-400 leading-tight" style={{ fontSize: 'clamp(0.6rem, 2vw, 0.75rem)' }}>
                 {card.label}
               </div>
             </div>
           ))}
         </div>
 
-        <button onClick={onClose} style={{
-          width: '100%', padding: '12px 0', borderRadius: 10, border: 'none',
-          background: '#1e293b', color: '#94a3b8', cursor: 'pointer',
-          fontWeight: 600, fontSize: '0.9rem',
-        }}>
+        <button onClick={onClose}
+          className="w-full py-2.5 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-medium mt-2 text-sm md:text-base">
           Cerrar
         </button>
       </div>
@@ -178,12 +164,5 @@ const ModalReporte = ({ show, modo, stats, panelPromedio: promProp, panelTurnos:
   );
 };
 
-// Helper para convertir hex a rgb
-const hexToRgb = (hex: string) => {
-  const r = Number.parseInt(hex.slice(1, 3), 16);
-  const g = Number.parseInt(hex.slice(3, 5), 16);
-  const b = Number.parseInt(hex.slice(5, 7), 16);
-  return `${r},${g},${b}`;
-};
 
 export default ModalReporte;

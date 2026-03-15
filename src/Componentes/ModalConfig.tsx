@@ -30,16 +30,9 @@ const ModalConfig = ({ show, config, onConfirm, onClose }: Props) => {
   const rolBorder = isAdmin ? 'rgba(124,58,237,0.3)'  : 'rgba(14,165,233,0.3)';
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 200,
-      background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}>
-      <div style={{
-        background: '#0f172a', border: '1px solid rgba(148,163,184,0.2)',
-        borderRadius: 16, padding: '32px 36px', minWidth: 400, maxWidth: 480,
-        boxShadow: '0 20px 60px rgba(0,0,0,0.7)',
-      }}>
-        <h2 style={{ color: '#f1f5f9', fontWeight: 700, marginBottom: 6, fontSize: '1.2rem' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+      <div className="w-full max-w-md mx-auto bg-[#0f172a] rounded-2xl p-4 md:p-6 overflow-y-auto max-h-[90vh] shadow-2xl">
+        <h2 className="text-base md:text-xl font-bold text-white mb-4">
           ⚙ Configuración del Simulador
         </h2>
 
@@ -81,17 +74,17 @@ const ModalConfig = ({ show, config, onConfirm, onClose }: Props) => {
 
         {/* MODO TIEMPO */}
         {isAdmin ? (
-          <div style={{ marginBottom: 18 }}>
+          <div className="mb-4 md:mb-5">
             <Label>Modo de tiempo</Label>
-            <div style={{ display: 'flex', gap: 10 }}>
+            <div className="flex gap-2 w-full">
               {(['simulacion', 'real'] as const).map(m => (
-                <button key={m} onClick={() => setLocal(l => ({ ...l, modo: m }))} style={{
-                  flex: 1, padding: '8px 0', borderRadius: 8, border: '2px solid',
-                  borderColor: local.modo === m ? '#0ea5e9' : 'rgba(148,163,184,0.2)',
-                  background: local.modo === m ? 'rgba(14,165,233,0.2)' : 'transparent',
-                  color: local.modo === m ? '#38bdf8' : '#64748b',
-                  cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem',
-                }}>
+                <button key={m} onClick={() => setLocal(l => ({ ...l, modo: m }))}
+                  className="flex-1 py-2 px-3 rounded-lg text-xs md:text-sm font-medium border-2 transition-colors"
+                  style={{
+                    borderColor: local.modo === m ? '#0ea5e9' : 'rgba(148,163,184,0.2)',
+                    background: local.modo === m ? 'rgba(14,165,233,0.2)' : 'transparent',
+                    color: local.modo === m ? '#38bdf8' : '#64748b',
+                  }}>
                   {m === 'simulacion' ? '⚡ Simulación (seg)' : '🕒 Tiempo Real (min)'}
                 </button>
               ))}
@@ -100,8 +93,8 @@ const ModalConfig = ({ show, config, onConfirm, onClose }: Props) => {
         ) : null}
 
         {/* UMBRALES SEMÁFORO */}
-        <div style={{ display: 'flex', gap: 16, marginBottom: isAdmin ? 24 : 8 }}>
-          <div style={{ flex: 1 }}>
+        <div className="grid grid-cols-2 gap-3" style={{ marginBottom: isAdmin ? 24 : 8 }}>
+          <div>
             <Label>🟡 Amarillo ({local.modo === 'simulacion' ? 'seg' : 'min'})</Label>
             <Input
               type="number" value={local.tiempoAmarillo}
@@ -109,7 +102,7 @@ const ModalConfig = ({ show, config, onConfirm, onClose }: Props) => {
               onChange={v => setLocal(l => ({ ...l, tiempoAmarillo: Number(v) }))}
             />
           </div>
-          <div style={{ flex: 1 }}>
+          <div>
             <Label>🔴 Rojo ({local.modo === 'simulacion' ? 'seg' : 'min'})</Label>
             <Input
               type="number" value={local.tiempoRojo}
@@ -144,22 +137,15 @@ const ModalConfig = ({ show, config, onConfirm, onClose }: Props) => {
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={{
-            padding: '10px 20px', borderRadius: 8, border: '1px solid rgba(148,163,184,0.2)',
-            background: 'transparent', color: '#94a3b8', cursor: 'pointer',
-          }}>
+        <div className="grid grid-cols-2 gap-3 mt-4">
+          <button onClick={onClose} className="w-full rounded-lg border border-slate-500/40 bg-transparent text-slate-400 py-2.5 text-sm">
             Cancelar
           </button>
           <button onClick={() => onConfirm(
             isAdmin
               ? local
               : { ...local, modo: 'real', tiempoAmarillo: 60, tiempoRojo: 120, rol: 'cliente' }
-          )} style={{
-            padding: '10px 24px', borderRadius: 8, border: 'none',
-            background: '#16a34a', color: '#fff', fontWeight: 700, cursor: 'pointer',
-            fontSize: '0.9rem',
-          }}>
+          )} className="w-full rounded-lg border-0 bg-green-600 hover:bg-green-500 text-white font-bold py-2.5 text-sm">
             🚀 Iniciar
           </button>
         </div>
@@ -181,13 +167,7 @@ const Input = ({ value, onChange, type, disabled }: {
   <input
     type={type} value={value} disabled={disabled}
     onChange={e => onChange(e.target.value)}
-    style={{
-      width: '100%', padding: '8px 12px', borderRadius: 8,
-      background: disabled ? 'rgba(30,41,59,0.5)' : 'rgba(30,41,59,0.8)',
-      border: '1px solid rgba(148,163,184,0.2)',
-      color: disabled ? '#475569' : '#f1f5f9',
-      fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box',
-    }}
+    className={`w-full bg-gray-800 text-white rounded-lg px-3 py-2 text-sm border border-gray-600 focus:border-blue-500 ${disabled ? 'opacity-70 cursor-not-allowed' : ''}`}
   />
 );
 

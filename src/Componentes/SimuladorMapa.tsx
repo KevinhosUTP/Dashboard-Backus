@@ -28,6 +28,10 @@ const TIEMPOS_CLIENTE = { tiempoAmarillo: 60, tiempoRojo: 120 } as const;
 const TIEMPOS_AJUSTE_REAL = { tiempoAmarillo: 61, tiempoRojo: 121 } as const;
 const INTERVALO_GENERACION_SIM_MS = 7_000;
 const INTERVALO_POLLING_MS = 6_000;
+const MOBILE_HEADER_HEIGHT = 105;
+const MOBILE_QUEUE_HEIGHT = 176;
+const MOBILE_QUEUE_HEADER_HEIGHT = 40;
+const MOBILE_CREDITS_HEIGHT = 38;
 
 const TIPOS_TODOS = ['P', 'J', 'B', 'T', 'O'] as const;
 const TIPOS_SIN_PLATAFORMA = ['P', 'J', 'B', 'O'] as const;
@@ -177,10 +181,13 @@ const SimuladorMapa = ({
   const [toasts, setToasts]                             = useState<{ id: number; msg: string; tipo: string }[]>([]);
   const [alertaMaxIncidencias, setAlertaMaxIncidencias] = useState(false);
   const [isMobile, setIsMobile]                         = useState(window.innerWidth < 1024);
+  const [isCompactMobile, setIsCompactMobile]           = useState(window.innerWidth < 768);
+  const [camionDetalle, setCamionDetalle]               = useState<Camion | null>(null);
 
   const colaRef        = useRef<Camion[]>([]);
   const enProcesoRef   = useRef<Record<string, Camion>>({});
   const bahiasSaliendo = useRef<Set<string>>(new Set());
+  const camionesFinalizados = useRef<Set<string>>(new Set());
 
   const [config, setConfig] = useState<ConfigSimulador>({
     modo: rolInicial === 'cliente' ? 'real' : 'simulacion',
@@ -211,10 +218,19 @@ const SimuladorMapa = ({
   useEffect(() => { enProcesoRef.current = enProceso; }, [enProceso]);
 
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 1024);
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 1024);
+      setIsCompactMobile(window.innerWidth < 768);
+    };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  useEffect(() => {
+    if (!simulacionActiva || !isCompactMobile) {
+      setCamionDetalle(null);
+    }
+  }, [simulacionActiva, isCompactMobile]);
 
   // ── useEffect principal: switch entre Modo Ajuste Real y Modo Simulación ──
   useEffect(() => {
@@ -309,6 +325,24 @@ const SimuladorMapa = ({
     setCamionArrastrando(camion);
   };
 
+  const registrarFinalizacionUnica = useCallback((camion: Camion): boolean => {
+    if (camionesFinalizados.current.has(camion.id)) return false;
+    camionesFinalizados.current.add(camion.id);
+
+    const tiempoPatio = (Date.now() - camion.tiempoEntradaPatio) / 60_000;
+    const turno = getTurnoActual();
+    setStats(prev => ({
+      ...prev,
+      total: prev.total + 1,
+      atendidosTurno1: prev.atendidosTurno1 + (turno === 1 ? 1 : 0),
+      atendidosTurno2: prev.atendidosTurno2 + (turno === 2 ? 1 : 0),
+      atendidosTurno3: prev.atendidosTurno3 + (turno === 3 ? 1 : 0),
+      tiemposTotalPatio: [...prev.tiemposTotalPatio, tiempoPatio],
+    }));
+
+    return true;
+  }, []);
+
   const handleDrop = useCallback((bahiaId: string) => {
     setCamionArrastrando(null);
     if (!camionArrastrando) return;
@@ -330,24 +364,17 @@ const SimuladorMapa = ({
     if (config.modo === 'simulacion') {
       setTimeout(() => {
         setEnProceso(prev => {
-          if (!prev[bahiaId]) return prev;
-          const tiempoPatio = (Date.now() - camion.tiempoEntradaPatio) / 60_000;
-          const turnoAuto   = getTurnoActual();
-          setStats(s => ({
-            ...s,
-            total:              s.total + 1,
-            atendidosTurno1:    s.atendidosTurno1 + (turnoAuto === 1 ? 1 : 0),
-            atendidosTurno2:    s.atendidosTurno2 + (turnoAuto === 2 ? 1 : 0),
-            atendidosTurno3:    s.atendidosTurno3 + (turnoAuto === 3 ? 1 : 0),
-            tiemposTotalPatio:  [...s.tiemposTotalPatio, tiempoPatio],
-          }));
-          notify(`✅ Finalizado (auto): ${camion.placa}`, 'success');
+          const camionEnBahia = prev[bahiaId];
+          // Evita que un timeout viejo contabilice otro camión en la misma bahía.
+          if (!camionEnBahia || camionEnBahia.id !== camion.id) return prev;
+          const registrado = registrarFinalizacionUnica(camionEnBahia);
+          if (registrado) notify(`✅ Finalizado (auto): ${camionEnBahia.placa}`, 'success');
           const c = { ...prev }; delete c[bahiaId]; return c;
         });
       }, 8 * factor);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [camionArrastrando, config.modo, notify, recargarPaneles]);
+  }, [camionArrastrando, config.modo, notify, recargarPaneles, registrarFinalizacionUnica]);
 
   const handleDropFromBahia = (fromBahiaId: string, toBahiaId: string) => {
     const camion = enProceso[fromBahiaId];
@@ -370,16 +397,7 @@ const SimuladorMapa = ({
     if (bahiasSaliendo.current.has(bahiaId)) return;
     bahiasSaliendo.current.add(bahiaId);
     try {
-      const tiempoPatio = (Date.now() - camion.tiempoEntradaPatio) / 60_000;
-      const turno = getTurnoActual();
-      setStats(prev => ({
-        ...prev,
-        total: prev.total + 1,
-        atendidosTurno1: prev.atendidosTurno1 + (turno === 1 ? 1 : 0),
-        atendidosTurno2: prev.atendidosTurno2 + (turno === 2 ? 1 : 0),
-        atendidosTurno3: prev.atendidosTurno3 + (turno === 3 ? 1 : 0),
-        tiemposTotalPatio: [...prev.tiemposTotalPatio, tiempoPatio],
-      }));
+      registrarFinalizacionUnica(camion);
       setEnProceso(prev => { const c = { ...prev }; delete c[bahiaId]; return c; });
       if (config.modo === 'real') {
         const ok = await handleMarcarSalidaReal(camion.id_viaje);
@@ -392,7 +410,7 @@ const SimuladorMapa = ({
     } finally {
       bahiasSaliendo.current.delete(bahiaId);
     }
-  }, [config.modo, notify, recargarPaneles]);
+  }, [config.modo, notify, recargarPaneles, registrarFinalizacionUnica]);
 
   const handleIncidenciaRegistrada = useCallback((camionId: string) => {
     // Actualiza el contador local del camión específico (no global)
@@ -423,6 +441,8 @@ const SimuladorMapa = ({
 
   const handleCerrarSesion = () => {
     if (window.confirm('¿Deseas cerrar la sesión?')) {
+      camionesFinalizados.current.clear();
+      setCamionDetalle(null);
       setSimulacionActiva(false); setCola([]); setEnProceso({});
       notify('👋 Sesión cerrada', 'info');
       // Pequeño delay para que el toast sea visible antes de volver al login
@@ -431,6 +451,18 @@ const SimuladorMapa = ({
   };
 
   const dm = darkMode;
+  const abrirDetalleCamion = (camion: Camion) => setCamionDetalle(camion);
+  const cerrarDetalleCamion = () => setCamionDetalle(null);
+  const mobileMainHeight = `calc(100vh - ${MOBILE_HEADER_HEIGHT + MOBILE_QUEUE_HEIGHT + MOBILE_CREDITS_HEIGHT}px)`;
+  const mobileQueueBodyHeight = `calc(${MOBILE_QUEUE_HEIGHT}px - ${MOBILE_QUEUE_HEADER_HEIGHT}px)`;
+
+  const getSemaforoClase = (estado: Camion['estadoAlerta']) => (
+    estado === 'verde' ? 'bg-green-400' : estado === 'amarillo' ? 'bg-yellow-400' : 'bg-red-400'
+  );
+
+  const getEstadoOperacion = (camion: Camion) => (
+    camion.operacionCodigo === 'C' ? 'CARGA' : 'DESCARGA'
+  );
   const semaforoLimites = config.modo === 'real'
     ? TIEMPOS_AJUSTE_REAL
     : { tiempoAmarillo: config.tiempoAmarillo, tiempoRojo: config.tiempoRojo };
@@ -601,7 +633,7 @@ const SimuladorMapa = ({
   return (
     <div className={`h-screen w-full flex flex-col overflow-hidden ${dm ? 'bg-[#060d1a]' : 'bg-[#e8edf5]'}`}>
 
-      <div className="flex-shrink-0 z-50">
+      <div className="shrink-0 z-50">
         <Header
           darkMode={darkMode} simulacionActiva={simulacionActiva} config={config}
           rol={rolInicial} nombreUsuario={nombreUsuario}
@@ -631,27 +663,63 @@ const SimuladorMapa = ({
         )}
 
         {isMobile ? (
-          <div className="relative z-20 grid grid-cols-2 md:grid-cols-3 gap-3 p-4 overflow-y-auto">
-            {Object.entries(BAHIAS_CONFIG).map(([id, bay]) => (
-              <div key={id} className="min-h-[120px]">
-                <BahiaOverlay
-                  bahiaId={id} config={bay}
-                  camion={enProceso[id] || null}
-                  camionArrastrando={camionArrastrando}
-                  validarFn={validarAsignacion}
-                  onDrop={handleDrop}
-                  onDropFromBahia={handleDropFromBahia}
-                  onFinalizar={handleFinalizar}
-                  simulacionActiva={simulacionActiva}
-                  modoConfig={config}
-                  formatTiempo={formatTiempo}
-                  darkMode={darkMode}
-                  onNotify={notify}
-                  onIncidenciaRegistrada={handleIncidenciaRegistrada}
-                  modoAyuda={modoAyuda}
-                />
+          <div
+            className="relative z-20 p-4 overflow-y-scroll"
+            style={{ height: mobileMainHeight, WebkitOverflowScrolling: 'touch' }}
+          >
+            <div
+              className="relative grid grid-cols-2 md:grid-cols-3 gap-3 p-4 overflow-y-scroll rounded-lg"
+              style={{
+                backgroundImage: 'url(/patio.png)',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+                minHeight: '60vh',
+                WebkitOverflowScrolling: 'touch',
+              }}
+            >
+              <div className="absolute inset-0 bg-black/50 rounded-lg pointer-events-none z-0" />
+              {Object.entries(BAHIAS_CONFIG).map(([id, bay]) => (
+                <div key={id} className="relative z-10 min-h-[120px]">
+                  <BahiaOverlay
+                    bahiaId={id} config={bay}
+                    camion={enProceso[id] || null}
+                    camionArrastrando={camionArrastrando}
+                    validarFn={validarAsignacion}
+                    onDrop={handleDrop}
+                    onDropFromBahia={handleDropFromBahia}
+                    onFinalizar={handleFinalizar}
+                    simulacionActiva={simulacionActiva}
+                    modoConfig={config}
+                    formatTiempo={formatTiempo}
+                    darkMode={darkMode}
+                    onNotify={notify}
+                    onIncidenciaRegistrada={handleIncidenciaRegistrada}
+                    modoAyuda={modoAyuda}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-col gap-3 p-4 w-full">
+              <PanelFlotante titulo="🚨 Unidad Mayor Prioridad" darkMode={darkMode}
+                style={{ width: '100%', position: 'relative' }}>
+                {panelPrioridadContent}
+              </PanelFlotante>
+              <PanelFlotante titulo="⏱ Tiempo Promedio Patio" darkMode={darkMode}
+                style={{ width: '100%', position: 'relative' }}>
+                {panelPromedioContent}
+              </PanelFlotante>
+              <PanelFlotante titulo="🔢 Conteo por Turno" darkMode={darkMode}
+                style={{ width: '100%', position: 'relative' }}>
+                {panelTurnoContent}
+              </PanelFlotante>
+              <div className={`rounded-lg backdrop-blur-md
+                ${dm ? 'bg-slate-900/80 border border-slate-700/20 text-slate-300' : 'bg-white/90 border border-slate-200 text-slate-600'}`}
+                style={{ padding: 'clamp(5px,0.8vw,10px) clamp(8px,1vw,14px)', fontSize: 'clamp(0.6rem,0.8vw,0.74rem)' }}>
+                {semaforoContent}
               </div>
-            ))}
+            </div>
           </div>
         ) : (
           Object.entries(BAHIAS_CONFIG).map(([id, bay]) => (
@@ -676,24 +744,7 @@ const SimuladorMapa = ({
           ))
         )}
 
-        {isMobile ? (
-          <div className="flex flex-col gap-3 p-4">
-            <PanelFlotante titulo="🚨 Unidad Mayor Prioridad" darkMode={darkMode}>
-              {panelPrioridadContent}
-            </PanelFlotante>
-            <PanelFlotante titulo="⏱ Tiempo Promedio Patio" darkMode={darkMode}>
-              {panelPromedioContent}
-            </PanelFlotante>
-            <PanelFlotante titulo="🔢 Conteo por Turno" darkMode={darkMode}>
-              {panelTurnoContent}
-            </PanelFlotante>
-            <div className={`rounded-lg backdrop-blur-md
-              ${dm ? 'bg-slate-900/80 border border-slate-700/20 text-slate-300' : 'bg-white/90 border border-slate-200 text-slate-600'}`}
-              style={{ padding: 'clamp(5px,0.8vw,10px) clamp(8px,1vw,14px)', fontSize: 'clamp(0.6rem,0.8vw,0.74rem)' }}>
-              {semaforoContent}
-            </div>
-          </div>
-        ) : (
+        {!isMobile && (
           <>
             <PanelFlotante titulo="🚨 Unidad Mayor Prioridad" darkMode={darkMode}
               style={{ top: '5.69%', left: '70.78%', width: 'clamp(160px,18vw,240px)' }}>
@@ -731,40 +782,107 @@ const SimuladorMapa = ({
         </div>
       </main>
 
-      <footer className={`flex-shrink-0 h-44 w-full flex flex-col z-20
-        ${dm ? 'bg-gray-950 border-t border-slate-800' : 'bg-slate-100 border-t border-slate-200'}`}>
-        <div className={`flex items-center gap-2 px-4 pt-2 pb-1 font-semibold uppercase tracking-widest flex-shrink-0
-          ${dm ? 'text-slate-500' : 'text-slate-500'}`}
-          style={{ fontSize: 'clamp(0.65rem,0.85vw,0.8rem)' }}>
-          <span>🚛 Cola de Espera</span>
-          <span className={`rounded-full px-2 font-extrabold ${dm ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500'}`}>
+      <footer className={`flex-shrink-0 w-full flex flex-col z-20 ${isCompactMobile ? '' : 'h-44'}
+        ${dm ? 'bg-gray-950 border-t border-slate-800' : 'bg-slate-100 border-t border-slate-200'}`}
+        style={{ height: isCompactMobile ? `${MOBILE_QUEUE_HEIGHT}px` : undefined }}>
+        <div className="flex items-center gap-2 px-4 pt-2 pb-1 font-semibold uppercase tracking-widest shrink-0 text-slate-500"
+          style={{
+            fontSize: isCompactMobile ? '0.75rem' : 'clamp(0.65rem,0.85vw,0.8rem)',
+            minHeight: isCompactMobile ? `${MOBILE_QUEUE_HEADER_HEIGHT}px` : undefined,
+          }}>
+          <span className="whitespace-nowrap">🚛 COLA DE ESPERA · {cola.length}</span>
+          <span className={`${isCompactMobile ? 'hidden' : 'inline-flex'} rounded-full px-2 font-extrabold ${dm ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500'}`}>
             {cola.length}
           </span>
           {!simulacionActiva && (
-            <span className={`font-normal normal-case tracking-normal ${dm ? 'text-slate-600' : 'text-slate-400'}`}>
+            <span className={`${isCompactMobile ? 'hidden' : 'inline'} font-normal normal-case tracking-normal ${dm ? 'text-slate-600' : 'text-slate-400'}`}>
               Presiona ▶ Iniciar para comenzar
             </span>
           )}
         </div>
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-3" style={{ scrollbarWidth: 'thin' }}>
-          <div className="grid grid-cols-5 gap-3">
-            {cola.map(c => (
-              <TarjetaCamion
-                key={c.id} camion={c} simulacionActiva={simulacionActiva}
-                config={config} formatTiempo={formatTiempo}
-                onDragStart={handleDragStart}
-                onDragEnd={() => setCamionArrastrando(null)}
-                darkMode={darkMode}
-              />
-            ))}
-            {cola.length === 0 && simulacionActiva && (
-              <div className={`col-span-5 self-center text-sm py-2 ${dm ? 'text-slate-700' : 'text-slate-400'}`}>
-                Sin unidades en cola 🎉
-              </div>
-            )}
+        {isCompactMobile ? (
+          <div className="flex-1" style={{ height: mobileQueueBodyHeight }}>
+            <div className="flex gap-2 overflow-x-auto px-3 py-2 scrollbar-hide"
+              style={{ WebkitOverflowScrolling: 'touch' }}>
+              {cola.map(camion => (
+                <button
+                  type="button"
+                  key={camion.id}
+                  className={`shrink-0 flex flex-col items-center rounded-lg px-3 py-2 min-w-[72px]
+                    border select-none ${
+                      dm ? 'bg-gray-800 border-gray-600' : 'bg-slate-200 border-slate-300'
+                    }`}
+                  onClick={() => abrirDetalleCamion(camion)}
+                >
+                  <div className={`w-2 h-2 rounded-full mb-1 ${getSemaforoClase(camion.estadoAlerta)}`} />
+                  <span className={`font-bold text-xs leading-tight ${dm ? 'text-white' : 'text-slate-800'}`}>
+                    {camion.placa}
+                  </span>
+                  <span className={`text-[10px] mt-1 px-1 rounded font-medium ${
+                    camion.operacionCodigo === 'C'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-orange-600 text-white'
+                  }`}>
+                    {getEstadoOperacion(camion)}
+                  </span>
+                </button>
+              ))}
+              {cola.length === 0 && simulacionActiva && (
+                <div className="self-center text-xs py-2 text-slate-500">
+                  Sin unidades en cola 🎉
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-3" style={{ scrollbarWidth: 'thin' }}>
+            <div className="grid grid-cols-5 gap-3">
+              {cola.map(c => (
+                <TarjetaCamion
+                  key={c.id} camion={c} simulacionActiva={simulacionActiva}
+                  config={config} formatTiempo={formatTiempo}
+                  onDragStart={handleDragStart}
+                  onDragEnd={() => setCamionArrastrando(null)}
+                  darkMode={darkMode}
+                />
+              ))}
+              {cola.length === 0 && simulacionActiva && (
+                <div className={`col-span-5 self-center text-sm py-2 ${dm ? 'text-slate-700' : 'text-slate-400'}`}>
+                  Sin unidades en cola 🎉
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </footer>
+
+      {isCompactMobile && camionDetalle && (
+        <>
+          <button type="button" className="fixed inset-0 bg-black/60 z-40" onClick={cerrarDetalleCamion} aria-label="Cerrar detalle del camión" />
+          <div className={`fixed bottom-0 left-0 right-0 rounded-t-2xl p-4 z-50 ${dm ? 'bg-gray-900' : 'bg-white border-t border-slate-200'}`}>
+            <button
+              onClick={cerrarDetalleCamion}
+              className={`absolute top-3 right-3 text-lg leading-none ${dm ? 'text-slate-300' : 'text-slate-500'}`}
+              aria-label="Cerrar detalle"
+            >
+              ×
+            </button>
+            <div className="pr-8">
+              <h3 className={`font-extrabold text-sm ${dm ? 'text-white' : 'text-slate-900'}`}>{camionDetalle.placa}</h3>
+              <div className={`mt-2 space-y-1 text-xs ${dm ? 'text-slate-300' : 'text-slate-600'}`}>
+                <div><span className="font-semibold">Tipo:</span> {camionDetalle.tipoCodigo}</div>
+                <div><span className="font-semibold">Producto:</span> {camionDetalle.producto}</div>
+                <div><span className="font-semibold">Estado:</span> {getEstadoOperacion(camionDetalle)}</div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold">Semáforo:</span>
+                  <span className={`inline-block w-2 h-2 rounded-full ${getSemaforoClase(camionDetalle.estadoAlerta)}`} />
+                  <span className="capitalize">{camionDetalle.estadoAlerta}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       <Footer />
 
@@ -775,6 +893,7 @@ const SimuladorMapa = ({
             ? { ...c, modo: 'real', rol: 'cliente', ...TIEMPOS_CLIENTE }
             : { ...c, rol: 'admin' };
           setConfig(configFinal); setShowConfig(false); setSimulacionActiva(true);
+          camionesFinalizados.current.clear();
           setCola([]); setEnProceso({});
           setStats({ atendidosTurno1: 0, atendidosTurno2: 0, atendidosTurno3: 0, total: 0, tiemposTotalPatio: [] });
           notify('🚀 Sesión iniciada', 'success');
