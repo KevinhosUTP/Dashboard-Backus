@@ -139,11 +139,11 @@ const ModalLogin = ({ onLogin }: Props) => {
         <div style={{ color: '#334155', fontSize: '0.62rem', textAlign: 'center', marginTop: 16 }}>
           <div style={{ marginBottom: 4 }}>
             <span style={{ color: '#475569', fontWeight: 600 }}>Anthony Paiva Silva</span>
-            <span style={{ color: '#475569' }}> · Asistente Logístico · T1 Peak Season</span>
+            <span style={{ color: '#1e293b' }}> · Asistente Logístico · T1 Peak Season</span>
           </div>
           <div>
             <span style={{ color: '#475569', fontWeight: 600 }}>Kevin Paiva Silva</span>
-            <span style={{ color: '#475569' }}> · Consultor Programador</span>
+            <span style={{ color: '#1e293b' }}> · Consultor Programador</span>
           </div>
         </div>
       </form>

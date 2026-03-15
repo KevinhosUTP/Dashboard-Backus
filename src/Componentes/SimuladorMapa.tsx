@@ -1,9 +1,9 @@
 // src/Componentes/SimuladorMapa.tsx
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type {
   Camion, ConfigSimulador, StatsSimulador,
   EstadoAlerta,
-  VwUnidadPrioridad, VwDashboardTurnos, VwPromedioPatioNeto,
+  VwDashboardTurnos, VwPromedioPatioNeto,
   Rol,
 } from '../types';
 import TarjetaCamion from './TarjetaCamion';
@@ -15,11 +15,9 @@ import { Header } from './Header';
 import { Footer } from './Footer';
 import {
   fetchCamionesCola,
-  fetchUnidadPrioridad,
   fetchDashboardTurnos,
   fetchPromedioPatioNeto,
   intervalAMinutos,
-  intervalATexto,
   marcarSalidaDirecto,
   actualizarBahiaDirecto,
 } from '../services/supabaseService';
@@ -27,6 +25,97 @@ import { BAHIAS_CONFIG } from './bahiasConfig';
 
 // Tiempos fijos para el rol cliente — no editables
 const TIEMPOS_CLIENTE = { tiempoAmarillo: 60, tiempoRojo: 120 } as const;
+const TIEMPOS_AJUSTE_REAL = { tiempoAmarillo: 61, tiempoRojo: 121 } as const;
+const INTERVALO_GENERACION_SIM_MS = 7_000;
+const INTERVALO_POLLING_MS = 6_000;
+
+const TIPOS_TODOS = ['P', 'J', 'B', 'T', 'O'] as const;
+const TIPOS_SIN_PLATAFORMA = ['P', 'J', 'B', 'O'] as const;
+const ACCIONES = ['C', 'D'] as const;
+
+const pickRandom = <T,>(items: readonly T[]): T => items[Math.floor(Math.random() * items.length)];
+
+const generarPlacaFicticia = (): string => {
+  const letras = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const l1 = letras[Math.floor(Math.random() * letras.length)];
+  const l2 = letras[Math.floor(Math.random() * letras.length)];
+  const l3 = letras[Math.floor(Math.random() * letras.length)];
+  const n = Math.floor(100 + Math.random() * 900);
+  return `${l1}${l2}${l3}-${n}`;
+};
+
+const generarCamionAleatorio = (): Camion => {
+  // 5 perfiles equiprobables usando un único random [0..4]
+  const perfil = Math.floor(Math.random() * 5);
+
+  let tipoCodigo = 'O' as Camion['tipoCodigo'];
+  let operacionCodigo = 'D' as Camion['operacionCodigo'];
+  let producto = 'MIXD';
+
+  if (perfil === 0) {
+    // Perfil 1: bahías 0.1, 0.2, 1
+    tipoCodigo = pickRandom(TIPOS_TODOS);
+    operacionCodigo = 'D';
+    producto = pickRandom(['Fardos', 'Envases', 'CPC', 'PH', 'MIXD'] as const);
+  } else if (perfil === 1) {
+    // Perfil 2: bahía 2
+    tipoCodigo = 'P';
+    operacionCodigo = pickRandom(ACCIONES);
+    producto = 'PP';
+  } else if (perfil === 2) {
+    // Perfil 3: bahías 3, 4, 5
+    tipoCodigo = pickRandom(TIPOS_SIN_PLATAFORMA);
+    operacionCodigo = pickRandom(ACCIONES);
+    producto = operacionCodigo === 'D'
+      ? pickRandom(['PT', 'PP', 'MIXD'] as const)
+      : pickRandom(['PT', 'PP', 'MIXC'] as const);
+  } else if (perfil === 3) {
+    // Perfil 4: bahías 10 y 12
+    tipoCodigo = 'P';
+    operacionCodigo = pickRandom(ACCIONES);
+    producto = operacionCodigo === 'D'
+      ? pickRandom(['PT', 'PP', 'MIXD'] as const)
+      : pickRandom(['PT', 'PP', 'MIXC'] as const);
+  } else {
+    // Perfil 5: bahía 14
+    tipoCodigo = pickRandom(TIPOS_SIN_PLATAFORMA);
+    operacionCodigo = 'C';
+    producto = 'ENVLT';
+  }
+
+  // Filtro final de seguridad transversal
+  if (tipoCodigo === 'T') {
+    operacionCodigo = 'D';
+    producto = pickRandom(['Fardos', 'PH'] as const);
+  }
+
+  const now = new Date();
+  const llegadaISO = now.toISOString();
+  const idUnico = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  return {
+    id: idUnico,
+    id_db: 0,
+    id_viaje: `SIM-${idUnico}`,
+    placa: generarPlacaFicticia(),
+    frotcom: undefined,
+    propietario: 'Simulado',
+    fecha: llegadaISO.slice(0, 10),
+    hora: llegadaISO,
+    tipoOriginal: tipoCodigo,
+    tipoCodigo,
+    operacionCodigo,
+    producto,
+    tiempoEntradaPatio: now.getTime(),
+    tiempoLlegadaCola: now.getTime(),
+    estadoAlerta: 'verde',
+    maxAlertaReached: 'verde',
+    bahiaActual: undefined,
+    turno: getTurnoActual(),
+    incidencias: 0,
+    incidenciaAbierta: false,
+  };
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -47,6 +136,23 @@ const handleMarcarSalidaReal = async (id_viaje: string): Promise<boolean> => {
   const ok = await marcarSalidaDirecto(id_viaje);
   if (!ok) console.error('[supabase] marcarSalidaDirecto falló para id_viaje =', id_viaje);
   return ok;
+};
+
+const formatHoraCorta = (raw: string | undefined): string => {
+  if (!raw) return '—';
+  if (raw.includes('T')) {
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) return d.toLocaleTimeString('es-PE', { hour12: false });
+  }
+  if (raw.includes(':')) return raw.slice(0, 8);
+  return raw;
+};
+
+const minutosATexto = (min: number): string => {
+  if (min <= 0) return '< 1m';
+  const h = Math.floor(min / 60);
+  const m = Math.floor(min % 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -76,7 +182,7 @@ const SimuladorMapa = ({
   const bahiasSaliendo = useRef<Set<string>>(new Set());
 
   const [config, setConfig] = useState<ConfigSimulador>({
-    modo: 'simulacion',
+    modo: rolInicial === 'cliente' ? 'real' : 'simulacion',
     rol: rolInicial,
     // Cliente: tiempos fijos no modificables
     tiempoAmarillo: rolInicial === 'cliente' ? TIEMPOS_CLIENTE.tiempoAmarillo : 60,
@@ -87,9 +193,12 @@ const SimuladorMapa = ({
     total: 0, tiemposTotalPatio: [],
   });
 
-  const [panelPrioridad, setPanelPrioridad] = useState<VwUnidadPrioridad | null>(null);
   const [panelTurnos,    setPanelTurnos]    = useState<VwDashboardTurnos | null>(null);
   const [panelPromedio,  setPanelPromedio]  = useState<VwPromedioPatioNeto | null>(null);
+  const modoActual = config.modo;
+  const rolActual = config.rol;
+  const tiempoAmarilloActual = config.tiempoAmarillo;
+  const tiempoRojoActual = config.tiempoRojo;
 
   const notify = useCallback((msg: string, tipo = 'info') => {
     const id = Date.now() + Math.random();
@@ -100,54 +209,72 @@ const SimuladorMapa = ({
   useEffect(() => { colaRef.current = cola; },           [cola]);
   useEffect(() => { enProcesoRef.current = enProceso; }, [enProceso]);
 
-  // ── Polling de COLA cada 10s ──────────────────────────────────────────────
-  // FIX: filtra los camiones que ya están en bahía (enProceso) para no
-  // sobreescribir el estado local y hacer que "reaparezcan" en cola
+  // ── useEffect principal: switch entre Modo Ajuste Real y Modo Simulación ──
   useEffect(() => {
     if (!simulacionActiva) return;
 
-    const cargarCola = async () => {
-      const camiones = await fetchCamionesCola();
-      // IDs de camiones ya asignados a bahías — no deben volver a la cola
-      const idsEnBahia = new Set(Object.values(enProcesoRef.current).map(c => c.id));
-      setCola(camiones.filter(c => !idsEnBahia.has(c.id)));
-    };
+    if (modoActual === 'real') {
+      const cargarColaReal = async () => {
+        const camiones = await fetchCamionesCola();
+        // IDs de camiones ya asignados a bahías — no deben volver a la cola
+        const idsEnBahia = new Set(Object.values(enProcesoRef.current).map(c => c.id));
+        setCola(camiones.filter(c => !idsEnBahia.has(c.id)));
+      };
 
-    cargarCola();
-    const poller = setInterval(cargarCola, 10_000);
-    return () => clearInterval(poller);
-  }, [simulacionActiva]);
+      cargarColaReal();
+      const pollerReal = setInterval(cargarColaReal, INTERVALO_POLLING_MS);
+      return () => clearInterval(pollerReal);
+    }
+
+    // Simulación solo para admin: no consulta a Supabase, genera unidades locales.
+    if (rolActual === 'admin') {
+      const generador = setInterval(() => {
+        setCola(prev => [...prev, generarCamionAleatorio()]);
+      }, INTERVALO_GENERACION_SIM_MS);
+      return () => clearInterval(generador);
+    }
+  }, [simulacionActiva, modoActual, rolActual]);
 
   // ── Función compartida de recarga de paneles ─────────────────────────────
   const recargarPaneles = useCallback(async () => {
-    const [prioridad, turnos, promedio] = await Promise.all([
-      fetchUnidadPrioridad(),
+    if (modoActual === 'simulacion') {
+      setPanelTurnos(null);
+      setPanelPromedio(null);
+      return;
+    }
+
+    const [turnos, promedio] = await Promise.all([
       fetchDashboardTurnos(),
       fetchPromedioPatioNeto(),
     ]);
-    if (prioridad != null) setPanelPrioridad(prioridad);
-    if (turnos    != null) setPanelTurnos(turnos);
-    if (promedio  != null) setPanelPromedio(promedio);
-  }, []);
+    // En real conservamos el último dato válido para evitar quedar en blanco por respuestas nulas intermitentes.
+    if (turnos != null) setPanelTurnos(turnos);
+    if (promedio != null) setPanelPromedio(promedio);
+  }, [modoActual]);
 
-  // ── Polling de PANELES cada 15s — solo cuando la simulación está activa ──
+  // ── Polling de PANELES cada 6s — solo modo real y sesión activa ──
   useEffect(() => {
     if (!simulacionActiva) return;
     recargarPaneles();
-    const poller = setInterval(recargarPaneles, 15_000);
+    if (modoActual === 'simulacion') return;
+
+    const poller = setInterval(recargarPaneles, INTERVALO_POLLING_MS);
     return () => clearInterval(poller);
-  }, [simulacionActiva, recargarPaneles]);
+  }, [simulacionActiva, modoActual, recargarPaneles]);
 
   // ── Semáforo visual ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!simulacionActiva) return;
-    const factor = config.modo === 'real' ? 60_000 : 1_000;
+    const umbrales = modoActual === 'real'
+      ? TIEMPOS_AJUSTE_REAL
+      : { tiempoAmarillo: tiempoAmarilloActual, tiempoRojo: tiempoRojoActual };
+    const factor = modoActual === 'real' ? 60_000 : 1_000;
     const interval = setInterval(() => {
       setCola(prev => prev.map(c => {
         const unidad = (Date.now() - c.tiempoLlegadaCola) / factor;
         const estado: EstadoAlerta =
-          unidad >= config.tiempoRojo ? 'rojo' :
-          unidad >= config.tiempoAmarillo ? 'amarillo' : 'verde';
+          unidad >= umbrales.tiempoRojo ? 'rojo' :
+          unidad >= umbrales.tiempoAmarillo ? 'amarillo' : 'verde';
         const maxAlerta: EstadoAlerta =
           estado === 'rojo' ? 'rojo' :
           (c.maxAlertaReached === 'rojo' ? 'rojo' : estado);
@@ -155,7 +282,7 @@ const SimuladorMapa = ({
       }));
     }, 1_000);
     return () => clearInterval(interval);
-  }, [simulacionActiva, config.modo, config.tiempoAmarillo, config.tiempoRojo]);
+  }, [simulacionActiva, modoActual, tiempoAmarilloActual, tiempoRojoActual]);
 
   const validarAsignacion = (camion: Camion, bahiaId: string): true | string => {
     if (enProceso[bahiaId]) return 'Bahía ocupada';
@@ -185,17 +312,13 @@ const SimuladorMapa = ({
 
     const camion = camionArrastrando;
     setCola(prev => prev.filter(c => c.id !== camion.id));
-    const turno = getTurnoActual();
-    setStats(prev => ({
-      ...prev, total: prev.total + 1,
-      atendidosTurno1: prev.atendidosTurno1 + (turno === 1 ? 1 : 0),
-      atendidosTurno2: prev.atendidosTurno2 + (turno === 2 ? 1 : 0),
-      atendidosTurno3: prev.atendidosTurno3 + (turno === 3 ? 1 : 0),
-    }));
 
     const factor = config.modo === 'real' ? 60_000 : 1_000;
     setEnProceso(prev => ({ ...prev, [bahiaId]: { ...camion, bahiaActual: bahiaId } }));
-    handleDropBahiaReal(camion.id_viaje, bay.nombre);
+    if (config.modo === 'real') {
+      void handleDropBahiaReal(camion.id_viaje, bay.nombre);
+      void recargarPaneles();
+    }
 
     if (config.modo === 'simulacion') {
       setTimeout(() => {
@@ -211,14 +334,13 @@ const SimuladorMapa = ({
             atendidosTurno3:    s.atendidosTurno3 + (turnoAuto === 3 ? 1 : 0),
             tiemposTotalPatio:  [...s.tiemposTotalPatio, tiempoPatio],
           }));
-          handleMarcarSalidaReal(camion.id_viaje);
           notify(`✅ Finalizado (auto): ${camion.placa}`, 'success');
           const c = { ...prev }; delete c[bahiaId]; return c;
         });
       }, 8 * factor);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [camionArrastrando, config.modo, notify]);
+  }, [camionArrastrando, config.modo, notify, recargarPaneles]);
 
   const handleDropFromBahia = (fromBahiaId: string, toBahiaId: string) => {
     const camion = enProceso[fromBahiaId];
@@ -230,7 +352,10 @@ const SimuladorMapa = ({
       const c = { ...prev }; delete c[fromBahiaId];
       c[toBahiaId] = { ...camion, bahiaActual: toBahiaId }; return c;
     });
-    handleDropBahiaReal(camion.id_viaje, BAHIAS_CONFIG[toBahiaId].nombre);
+    if (config.modo === 'real') {
+      void handleDropBahiaReal(camion.id_viaje, BAHIAS_CONFIG[toBahiaId].nombre);
+      void recargarPaneles();
+    }
     notify(`🔄 ${camion.placa} → ${BAHIAS_CONFIG[toBahiaId].nombre}`, 'info');
   };
 
@@ -249,13 +374,18 @@ const SimuladorMapa = ({
         tiemposTotalPatio: [...prev.tiemposTotalPatio, tiempoPatio],
       }));
       setEnProceso(prev => { const c = { ...prev }; delete c[bahiaId]; return c; });
-      const ok = await handleMarcarSalidaReal(camion.id_viaje);
-      if (!ok) notify(`❌ Error al registrar salida de ${camion.placa}`, 'error');
-      else     notify(`✅ Salida registrada: ${camion.placa}`, 'success');
+      if (config.modo === 'real') {
+        const ok = await handleMarcarSalidaReal(camion.id_viaje);
+        if (!ok) notify(`❌ Error al registrar salida de ${camion.placa}`, 'error');
+        else     notify(`✅ Salida registrada: ${camion.placa}`, 'success');
+        await recargarPaneles();
+      } else {
+        notify(`✅ Salida registrada: ${camion.placa}`, 'success');
+      }
     } finally {
       bahiasSaliendo.current.delete(bahiaId);
     }
-  }, [notify]);
+  }, [config.modo, notify, recargarPaneles]);
 
   const handleIncidenciaRegistrada = useCallback((camionId: string) => {
     // Actualiza el contador local del camión específico (no global)
@@ -294,6 +424,60 @@ const SimuladorMapa = ({
   };
 
   const dm = darkMode;
+  const semaforoLimites = config.modo === 'real'
+    ? TIEMPOS_AJUSTE_REAL
+    : { tiempoAmarillo: config.tiempoAmarillo, tiempoRojo: config.tiempoRojo };
+
+  const panelPrioridadLocal = useMemo(() => {
+    const candidatos = [...cola, ...Object.values(enProceso)];
+    if (!candidatos.length) return null;
+
+    const [primero, ...resto] = candidatos;
+    const prioridad = resto.reduce((prev, curr) => (
+      curr.tiempoLlegadaCola < prev.tiempoLlegadaCola ? curr : prev
+    ), primero);
+
+    const minEspera = (Date.now() - prioridad.tiempoLlegadaCola) / 60_000;
+    const bahiaNombre = prioridad.bahiaActual
+      ? (BAHIAS_CONFIG[prioridad.bahiaActual]?.nombre ?? prioridad.bahiaActual)
+      : 'En cola';
+
+    return {
+      tracto: prioridad.placa,
+      hora_llegada: formatHoraCorta(prioridad.hora),
+      bahia_actual: bahiaNombre,
+      tiempoTexto: minutosATexto(minEspera),
+    };
+  }, [cola, enProceso]);
+
+  // Prioridad siempre basada en cola local: cuando se asigna a bahía sale de inmediato del panel.
+  const prioridadUI = panelPrioridadLocal;
+
+  const turnosUI = config.modo === 'simulacion'
+    ? {
+        turno_1: stats.atendidosTurno1,
+        turno_2: stats.atendidosTurno2,
+        turno_3: stats.atendidosTurno3,
+      }
+    : {
+        turno_1: panelTurnos?.turno_1 ?? stats.atendidosTurno1,
+        turno_2: panelTurnos?.turno_2 ?? stats.atendidosTurno2,
+        turno_3: panelTurnos?.turno_3 ?? stats.atendidosTurno3,
+      };
+
+  const promedioSesionSim = useMemo(() => {
+    const tiempos = stats.tiemposTotalPatio.filter(t => t > 0);
+    if (!tiempos.length) return null;
+    return tiempos.reduce((acc, t) => acc + t, 0) / tiempos.length;
+  }, [stats.tiemposTotalPatio]);
+
+  const promedioPatioUI = config.modo === 'simulacion'
+    ? promedioSesionSim
+    : (panelPromedio?.promedio_neto_patio
+      ? intervalAMinutos(panelPromedio.promedio_neto_patio)
+      : promedioSesionSim);
+
+  const promedioEsFallbackLocal = config.modo === 'real' && !panelPromedio?.promedio_neto_patio && promedioSesionSim != null;
 
   // imgFilter: el modo oscuro/claro define la base, modoAyuda solo añade
   // un pequeño boost de brillo ENCIMA sin cambiar el tema actual
@@ -363,22 +547,22 @@ const SimuladorMapa = ({
             <span className={dm ? 'text-slate-600' : 'text-slate-400'} style={{ fontSize: '0.75rem' }}>
               — Iniciar para ver datos —
             </span>
-          ) : panelPrioridad ? (
+          ) : prioridadUI ? (
             <div>
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="font-extrabold tracking-wider text-red-400"
                   style={{ fontSize: 'clamp(0.9rem,1.5vw,1.1rem)' }}>
-                  {panelPrioridad.tracto}
+                  {prioridadUI.tracto}
                 </span>
                 <span className="rounded-full px-2 py-0.5 font-bold text-black bg-red-400"
                   style={{ fontSize: 'clamp(0.6rem,0.9vw,0.72rem)' }}>
-                  ⏱ {intervalATexto(panelPrioridad.tiempo_transcurrido)}
+                  ⏱ {prioridadUI.tiempoTexto}
                 </span>
               </div>
               <div className={`leading-relajada ${dm ? 'text-slate-400' : 'text-slate-500'}`}
                 style={{ fontSize: 'clamp(0.6rem,0.85vw,0.73rem)' }}>
-                <div>🕐 Llegada: {panelPrioridad.hora_llegada ?? '—'}</div>
-                <div>📍 Bahía: {panelPrioridad.bahia_actual ?? 'En cola'}</div>
+                <div>🕐 Llegada: {prioridadUI.hora_llegada ?? '—'}</div>
+                <div>📍 Bahía: {prioridadUI.bahia_actual ?? 'En cola'}</div>
               </div>
             </div>
           ) : (
@@ -396,18 +580,22 @@ const SimuladorMapa = ({
               style={{ fontSize: '0.75rem' }}>
               — Iniciar para ver datos —
             </div>
-          ) : panelPromedio?.promedio_neto_patio ? (
+          ) : promedioPatioUI != null ? (
             <>
               <div className="font-extrabold text-sky-400 text-center leading-none"
                 style={{ fontSize: 'clamp(1.4rem,2.5vw,2rem)' }}>
-                {intervalAMinutos(panelPromedio.promedio_neto_patio).toFixed(1)}
+                {promedioPatioUI.toFixed(1)}
                 <span className="font-normal ml-1 text-slate-400" style={{ fontSize: 'clamp(0.7rem,1vw,0.9rem)' }}>min</span>
               </div>
               <div className={`text-center mt-1 ${dm ? 'text-slate-500' : 'text-slate-400'}`}
                 style={{ fontSize: 'clamp(0.52rem,0.7vw,0.65rem)' }}>
-                promedio neto del día
+                {config.modo === 'simulacion'
+                  ? 'promedio neto de la sesión'
+                  : (promedioEsFallbackLocal ? 'promedio local (esperando sincronización del día)' : 'promedio neto del día')}
               </div>
-              <div className="text-green-400 text-center mt-1" style={{ fontSize: '0.58rem' }}>✓ incidencias descontadas</div>
+              <div className="text-green-400 text-center mt-1" style={{ fontSize: '0.58rem' }}>
+                {config.modo === 'simulacion' ? '✓ basado en unidades de la sesión' : '✓ incidencias descontadas'}
+              </div>
             </>
           ) : (
             <div className={`text-center ${dm ? 'text-slate-500' : 'text-slate-400'}`}
@@ -435,7 +623,7 @@ const SimuladorMapa = ({
                 <div key={key} className="text-center">
                   <div className="font-extrabold text-violet-400 leading-none"
                     style={{ fontSize: 'clamp(1.2rem,2vw,1.7rem)' }}>
-                    {panelTurnos?.[campo] ?? 0}
+                    {turnosUI[campo]}
                   </div>
                   <div className={`mt-0.5 ${dm ? 'text-slate-500' : 'text-slate-400'}`}
                     style={{ fontSize: 'clamp(0.52rem,0.7vw,0.68rem)' }}>{key}</div>
@@ -454,9 +642,9 @@ const SimuladorMapa = ({
           <div className={`font-bold mb-1 uppercase tracking-widest ${dm ? 'text-slate-500' : 'text-slate-400'}`}
             style={{ fontSize: 'clamp(0.55rem,0.7vw,0.65rem)' }}>Semáforo de Espera</div>
           {[
-            { color: '#22c55e', label: `Verde ≤ ${config.tiempoAmarillo - 1} ${config.modo === 'simulacion' ? 's' : 'min'}` },
-            { color: '#eab308', label: `Amarillo ${config.tiempoAmarillo}–${config.tiempoRojo - 1} ${config.modo === 'simulacion' ? 's' : 'min'}` },
-            { color: '#ef4444', label: `Rojo ≥ ${config.tiempoRojo} ${config.modo === 'simulacion' ? 's' : 'min'}` },
+            { color: '#22c55e', label: `Verde ≤ ${semaforoLimites.tiempoAmarillo - 1} ${config.modo === 'simulacion' ? 's' : 'min'}` },
+            { color: '#eab308', label: `Amarillo ${semaforoLimites.tiempoAmarillo}–${semaforoLimites.tiempoRojo - 1} ${config.modo === 'simulacion' ? 's' : 'min'}` },
+            { color: '#ef4444', label: `Rojo ≥ ${semaforoLimites.tiempoRojo} ${config.modo === 'simulacion' ? 's' : 'min'}` },
           ].map(l => (
             <div key={l.color} className="flex items-center gap-1.5 mt-0.5">
               <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: l.color }} />
@@ -515,11 +703,11 @@ const SimuladorMapa = ({
 
       <Footer />
 
-      <ModalConfig show={showConfig} config={config}
+      <ModalConfig key={`${showConfig ? 'open' : 'closed'}-${config.rol}-${config.modo}-${config.tiempoAmarillo}-${config.tiempoRojo}`} show={showConfig} config={config}
         onConfirm={(c) => {
           // Cliente: ignorar cualquier intento de cambio en los tiempos
           const configFinal: ConfigSimulador = rolInicial === 'cliente'
-            ? { ...c, rol: 'cliente', ...TIEMPOS_CLIENTE }
+            ? { ...c, modo: 'real', rol: 'cliente', ...TIEMPOS_CLIENTE }
             : { ...c, rol: 'admin' };
           setConfig(configFinal); setShowConfig(false); setSimulacionActiva(true);
           setCola([]); setEnProceso({});
@@ -529,9 +717,10 @@ const SimuladorMapa = ({
         onClose={() => setShowConfig(false)}
       />
 
-      {/* ModalReporte recibe panelPromedio y panelTurnos directamente de Supabase */}
+      {/* En simulación usa métricas de sesión; en real usa métricas del día vía Supabase */}
       <ModalReporte
         show={showReport}
+        modo={config.modo}
         stats={stats}
         panelPromedio={panelPromedio}
         panelTurnos={panelTurnos}

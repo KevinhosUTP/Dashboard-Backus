@@ -7,7 +7,7 @@
  *   ✅ Bloqueo duro en MAX_INCIDENCIAS (3) con alerta de soporte
  *   ✅ Muestra promedio de duración de incidencias cerradas del camión
  */
-import { useState, useEffect, startTransition } from 'react';
+import { useState, useEffect, startTransition, useRef, useCallback } from 'react';
 import {
   abrirIncidencia,
   cerrarIncidencia,
@@ -34,32 +34,55 @@ const ModalIncidencia = ({ show, camion, bahiaNombre, onClose, onNotify, onIncid
   const [conteoLocal, setConteoLocal]     = useState<number>(camion.incidencias ?? 0);
   const [hayAbierta, setHayAbierta]       = useState(false);
   const [promedioTexto, setPromedioTexto] = useState<string | null>(null);
+  const aperturaEnCursoRef                = useRef(false);
+  const cierreEnCursoRef                  = useRef(false);
+
+  const camionId = camion.id;
+  const camionIdDb = camion.id_db;
+  const camionPlaca = camion.placa;
+  const camionTurno = camion.turno;
+  const camionProducto = camion.producto;
+  const camionOperacion = camion.operacionCodigo;
+  const incidenciasProp = camion.incidencias ?? 0;
+
+  const refrescarEstado = useCallback(async () => {
+    if (!camionIdDb) {
+      setConteoLocal(incidenciasProp);
+      setHayAbierta(false);
+      setPromedioTexto(null);
+      return;
+    }
+
+    const [conteo, abierta, promedio] = await Promise.all([
+      contarIncidencias(camionIdDb),
+      fetchIncidenciaAbierta(camionIdDb),
+      fetchPromedioIncidencias(camionIdDb),
+    ]);
+
+    setConteoLocal(conteo);
+    setHayAbierta(abierta);
+    setPromedioTexto(promedio ? intervalATexto(promedio) : null);
+  }, [camionIdDb, incidenciasProp]);
 
   // Bug 4 fix: re-sincronizar el contador cuando el prop cambia desde el padre
   useEffect(() => {
     startTransition(() => {
-      setConteoLocal(camion.incidencias ?? 0);
+      setConteoLocal(incidenciasProp);
     });
-  }, [camion.incidencias]);
+  }, [incidenciasProp]);
 
   // ── Carga exacta desde Supabase + polling cada 5s cuando el modal está abierto ──
   // Sin Realtime — polling HTTP puro, sin costo adicional en Supabase
   useEffect(() => {
-    if (!show || !camion.id_db) return;
-
-    const refrescar = () => {
-      contarIncidencias(camion.id_db).then(setConteoLocal);
-      fetchIncidenciaAbierta(camion.id_db).then(setHayAbierta);
-      fetchPromedioIncidencias(camion.id_db).then(t => setPromedioTexto(t ? intervalATexto(t) : null));
-    };
+    if (!show) return;
 
     // Carga inmediata al abrir el modal
-    refrescar();
+    void refrescarEstado();
 
     // Refresca cada 5s mientras el modal está abierto
-    const poller = setInterval(refrescar, 5_000);
+    const poller = setInterval(() => { void refrescarEstado(); }, 5_000);
     return () => clearInterval(poller);
-  }, [show, camion.id_db]);
+  }, [show, refrescarEstado]);
 
   if (!show) return null;
 
@@ -67,6 +90,11 @@ const ModalIncidencia = ({ show, camion, bahiaNombre, onClose, onNotify, onIncid
 
   // ── Abrir incidencia → INSERT directo a Supabase ──
   const handleRegistrar = async () => {
+    if (loading || aperturaEnCursoRef.current) return;
+    if (!camionIdDb) {
+      onNotify('❌ No se encontró el identificador del camión para registrar la incidencia.', 'error');
+      return;
+    }
     if (limiteSuperado) {
       onNotify('🚨 Límite de 3 incidencias alcanzado. Contactar a los desarrolladores.', 'error');
       return;
@@ -75,32 +103,69 @@ const ModalIncidencia = ({ show, camion, bahiaNombre, onClose, onNotify, onIncid
       onNotify('⚠️ Ya hay una incidencia abierta. Ciérrala antes de abrir una nueva.', 'error');
       return;
     }
+
+    aperturaEnCursoRef.current = true;
     setLoading(true);
-    const resultado = await abrirIncidencia(camion.id_db);
-    setLoading(false);
-    if (resultado) {
-      onIncidenciaRegistrada(camion.id);
-      onNotify(`⚠️ Incidencia ${conteoLocal + 1}/${MAX_INCIDENCIAS} abierta — ${camion.placa}`, 'success');
-      onClose();
-    } else {
+    try {
+      const abiertaActual = await fetchIncidenciaAbierta(camionIdDb);
+      if (abiertaActual) {
+        setHayAbierta(true);
+        onNotify('⚠️ Ya hay una incidencia abierta. Ciérrala antes de abrir una nueva.', 'error');
+        return;
+      }
+
+      const resultado = await abrirIncidencia(camionIdDb);
+
+      if (resultado.status === 'created') {
+        setConteoLocal(prev => Math.min(prev + 1, MAX_INCIDENCIAS));
+        setHayAbierta(true);
+        onIncidenciaRegistrada(camionId);
+        onNotify(`⚠️ Incidencia ${Math.min(conteoLocal + 1, MAX_INCIDENCIAS)}/${MAX_INCIDENCIAS} abierta — ${camionPlaca}`, 'success');
+        onClose();
+        return;
+      }
+
+      if (resultado.status === 'already-open') {
+        setHayAbierta(true);
+        await refrescarEstado();
+        onNotify('⚠️ Ya existe una incidencia abierta para este camión. No se registró una nueva.', 'info');
+        return;
+      }
+
       onNotify('❌ Error al abrir la incidencia en Supabase. Verifica la conexión.', 'error');
+    } finally {
+      setLoading(false);
+      aperturaEnCursoRef.current = false;
     }
   };
 
   // ── Cerrar incidencia → UPDATE hora_fin a Supabase ──
   const handleCerrar = async () => {
+    if (loading || cierreEnCursoRef.current) return;
+    if (!camionIdDb) {
+      onNotify('❌ No se encontró el identificador del camión para cerrar la incidencia.', 'error');
+      return;
+    }
     if (!hayAbierta) {
       onNotify('ℹ️ No hay ninguna incidencia abierta para cerrar.', 'info');
       return;
     }
+
+    cierreEnCursoRef.current = true;
     setLoading(true);
-    const resultado = await cerrarIncidencia(camion.id_db);
-    setLoading(false);
-    if (resultado) {
-      onNotify(`✅ Incidencia cerrada — ${camion.placa}`, 'success');
-      onClose();
-    } else {
-      onNotify('❌ Error al cerrar la incidencia en Supabase.', 'error');
+    try {
+      const resultado = await cerrarIncidencia(camionIdDb);
+      if (resultado) {
+        setHayAbierta(false);
+        await refrescarEstado();
+        onNotify(`✅ Incidencia cerrada — ${camionPlaca}`, 'success');
+        onClose();
+      } else {
+        onNotify('❌ Error al cerrar la incidencia en Supabase.', 'error');
+      }
+    } finally {
+      setLoading(false);
+      cierreEnCursoRef.current = false;
     }
   };
 
@@ -113,7 +178,7 @@ const ModalIncidencia = ({ show, camion, bahiaNombre, onClose, onNotify, onIncid
           <span style={{ fontSize: '1.4rem' }}>⚠️</span>
           <div style={{ flex: 1 }}>
             <div style={s.title}>Gestión de Incidencia</div>
-            <div style={s.sub}>{camion.placa} · {bahiaNombre} · T{camion.turno ?? '—'}</div>
+            <div style={s.sub}>{camionPlaca} · {bahiaNombre} · T{camionTurno ?? '—'}</div>
           </div>
           <button style={s.closeBtn} onClick={onClose} aria-label="Cerrar">✕</button>
         </div>
@@ -181,10 +246,10 @@ const ModalIncidencia = ({ show, camion, bahiaNombre, onClose, onNotify, onIncid
 
         {/* ── Info del camión ── */}
         <div style={s.infoBox}>
-          <Row label="Placa"     value={camion.placa} />
+          <Row label="Placa"     value={camionPlaca} />
           <Row label="Bahía"     value={bahiaNombre} />
-          <Row label="Producto"  value={camion.producto} />
-          <Row label="Operación" value={camion.operacionCodigo === 'C' ? 'Carga' : 'Descarga'} />
+          <Row label="Producto"  value={camionProducto} />
+          <Row label="Operación" value={camionOperacion === 'C' ? 'Carga' : 'Descarga'} />
           {promedioTexto && (
             <Row label="⏱ Prom. incidencias" value={promedioTexto} />
           )}

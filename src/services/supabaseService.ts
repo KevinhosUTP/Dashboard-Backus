@@ -142,7 +142,11 @@ export async function fetchUnidadPrioridad(): Promise<VwUnidadPrioridad | null> 
 //    El frontend filtra la fila de hoy para mostrar el turno actual.
 // ─────────────────────────────────────────────────────────────────────────────
 export async function fetchDashboardTurnos(): Promise<VwDashboardTurnos | null> {
-  const hoy = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const hoy = `${y}-${m}-${day}`; // fecha local "YYYY-MM-DD"
   const { data, error } = await supabase
     .from(V_TURNOS)
     .select('fecha, turno_1, turno_2, turno_3')
@@ -240,6 +244,28 @@ export interface IncidenciaRow {
   hora_fin?:      string;   // "HH:MM:SS" | null si aún abierta
 }
 
+export type AbrirIncidenciaResult =
+  | { status: 'created'; data: IncidenciaRow }
+  | { status: 'already-open' }
+  | { status: 'error' };
+
+function esConflictoIncidencia(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+
+  const maybeError = error as {
+    code?: string;
+    status?: number;
+    message?: string;
+    details?: string;
+  };
+
+  return maybeError.status === 409
+    || maybeError.code === '23505'
+    || maybeError.code === '409'
+    || /duplicate|duplicado|unique|conflict/i.test(maybeError.message ?? '')
+    || /duplicate|duplicado|unique|conflict/i.test(maybeError.details ?? '');
+}
+
 /** Hora actual formateada como "HH:MM:SS" para columnas TIME de Postgres */
 function horaActualTime(): string {
   return new Date().toLocaleTimeString('es-PE', { hour12: false }); // "HH:mm:ss"
@@ -248,7 +274,12 @@ function horaActualTime(): string {
 /**
  * Abre una nueva incidencia. Recibe el id interno de viajes_camiones (integer).
  */
-export async function abrirIncidencia(id_camion: number): Promise<IncidenciaRow | null> {
+export async function abrirIncidencia(id_camion: number): Promise<AbrirIncidenciaResult> {
+  const yaExisteAbierta = await fetchIncidenciaAbierta(id_camion);
+  if (yaExisteAbierta) {
+    return { status: 'already-open' };
+  }
+
   const { data, error } = await supabase
     .from(T_INCIDENCIAS)
     .insert({
@@ -259,8 +290,19 @@ export async function abrirIncidencia(id_camion: number): Promise<IncidenciaRow 
     .select()
     .maybeSingle();  // 406 fix: no lanza error si el INSERT no devuelve fila
 
-  if (error) return manejarError('abrirIncidencia', error);
-  return data as IncidenciaRow | null;
+  if (error) {
+    if (esConflictoIncidencia(error)) {
+      return { status: 'already-open' };
+    }
+    manejarError('abrirIncidencia', error);
+    return { status: 'error' };
+  }
+
+  if (!data) {
+    return { status: 'error' };
+  }
+
+  return { status: 'created', data: data as IncidenciaRow };
 }
 
 /**
@@ -303,50 +345,45 @@ export async function contarIncidencias(id_camion: number): Promise<number> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Devuelve true si id_viaje es un número puro (fallback cuando la columna es NULL en DB).
- * Ej: "42" → true (usar PK), "VJ-2024-001" → false (usar columna id_viaje)
- */
-function esIdNumerico(id_viaje: string): boolean {
-  const n = Number(id_viaje);
-  return !isNaN(n) && n > 0 && String(n) === id_viaje;
-}
-
-/**
  * Actualiza la bahía y el estado de un viaje tras un drag & drop.
- * Si id_viaje es un número puro usa la PK (id), si no usa la columna id_viaje.
+ * Usa id_viaje si es un valor real (no es igual al id numérico en string),
+ * de lo contrario usa el id integer directamente como PK.
  */
 export async function actualizarBahiaDirecto(
   id_viaje: string,
   bahia_actual: string,
   estado: 'Cargando' | 'Descargando'
 ): Promise<boolean> {
-  const payload = { bahia_actual, estado };
-  const { data, error } = esIdNumerico(id_viaje)
-    ? await supabase.from(T_VIAJES).update(payload).eq('id', Number(id_viaje)).select('id')
-    : await supabase.from(T_VIAJES).update(payload).eq('id_viaje', id_viaje).select('id');
+  const idNumerico = Number(id_viaje);
+  const usarPK = !isNaN(idNumerico) && String(idNumerico) === id_viaje;
+
+  const query = supabase.from(T_VIAJES).update({ bahia_actual, estado });
+  const { error } = usarPK
+    ? await query.eq('id', idNumerico)
+    : await query.eq('id_viaje', id_viaje);
 
   if (error) { manejarError('actualizarBahiaDirecto', error); return false; }
-  if (!data?.length) {
-    console.warn(`[supabaseService] actualizarBahiaDirecto: ninguna fila actualizada para id_viaje="${id_viaje}"`);
-    return false;
-  }
   return true;
 }
 
 /**
- * Registra la hora de salida y marca el viaje como Finalizado.
- * Si id_viaje es un número puro usa la PK (id), si no usa la columna id_viaje.
+ * Registra la hora de salida en formato TIME y marca el viaje como Finalizado.
+ * Usa id_viaje si es un valor real (no es igual al id numérico en string),
+ * de lo contrario usa el id integer directamente como PK.
  */
 export async function marcarSalidaDirecto(id_viaje: string): Promise<boolean> {
   const horaActual = new Date().toLocaleTimeString('es-PE', { hour12: false });
-  const payload = { estado: 'Finalizado', hora_salida: horaActual };
-  const { data, error } = esIdNumerico(id_viaje)
-    ? await supabase.from(T_VIAJES).update(payload).eq('id', Number(id_viaje)).select('id')
-    : await supabase.from(T_VIAJES).update(payload).eq('id_viaje', id_viaje).select('id');
+  const idNumerico = Number(id_viaje);
+  const usarPK = !isNaN(idNumerico) && String(idNumerico) === id_viaje;
+
+  const query = supabase.from(T_VIAJES).update({ estado: 'Finalizado', hora_salida: horaActual });
+  const { data, error } = usarPK
+    ? await query.eq('id', idNumerico).select('id')
+    : await query.eq('id_viaje', id_viaje).select('id');
 
   if (error) { manejarError('marcarSalidaDirecto', error); return false; }
-  if (!data?.length) {
-    console.warn(`[supabaseService] marcarSalidaDirecto: ninguna fila actualizada para id_viaje="${id_viaje}"`);
+  if (!data || data.length === 0) {
+    console.warn(`[supabaseService] marcarSalidaDirecto: ninguna fila actualizada para id_viaje="${id_viaje}" (usarPK=${usarPK})`);
     return false;
   }
   return true;

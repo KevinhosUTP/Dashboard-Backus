@@ -11,7 +11,16 @@ interface Props {
 }
 
 const ModalConfig = ({ show, config, onConfirm, onClose }: Props) => {
-  const [local, setLocal] = useState<ConfigSimulador>(config);
+  const configNormalizada: ConfigSimulador = config.rol === 'cliente'
+    ? {
+        ...config,
+        modo: 'real',
+        tiempoAmarillo: 60,
+        tiempoRojo: 120,
+      }
+    : config;
+
+  const [local, setLocal] = useState<ConfigSimulador>(configNormalizada);
 
   if (!show) return null;
 
@@ -53,23 +62,42 @@ const ModalConfig = ({ show, config, onConfirm, onClose }: Props) => {
           </div>
         </div>
 
-        {/* MODO TIEMPO */}
-        <div style={{ marginBottom: 18 }}>
-          <Label>Modo de tiempo</Label>
-          <div style={{ display: 'flex', gap: 10 }}>
-            {(['simulacion', 'real'] as const).map(m => (
-              <button key={m} onClick={() => setLocal(l => ({ ...l, modo: m }))} style={{
-                flex: 1, padding: '8px 0', borderRadius: 8, border: '2px solid',
-                borderColor: local.modo === m ? '#0ea5e9' : 'rgba(148,163,184,0.2)',
-                background: local.modo === m ? 'rgba(14,165,233,0.2)' : 'transparent',
-                color: local.modo === m ? '#38bdf8' : '#64748b',
-                cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem',
-              }}>
-                {m === 'simulacion' ? '⚡ Simulación (seg)' : '🕒 Tiempo Real (min)'}
-              </button>
-            ))}
+        {!isAdmin && (
+          <div style={{
+            marginTop: -8,
+            marginBottom: 18,
+            padding: '10px 12px',
+            borderRadius: 8,
+            background: 'rgba(56,189,248,0.08)',
+            border: '1px solid rgba(56,189,248,0.22)',
+            color: '#7dd3fc',
+            fontSize: '0.76rem',
+            lineHeight: 1.5,
+          }}>
+            👁 Como <strong>Cliente</strong>, solamente está permitido trabajar en <strong>Tiempo Real</strong>.
+            La simulación no está disponible para este perfil.
           </div>
-        </div>
+        )}
+
+        {/* MODO TIEMPO */}
+        {isAdmin ? (
+          <div style={{ marginBottom: 18 }}>
+            <Label>Modo de tiempo</Label>
+            <div style={{ display: 'flex', gap: 10 }}>
+              {(['simulacion', 'real'] as const).map(m => (
+                <button key={m} onClick={() => setLocal(l => ({ ...l, modo: m }))} style={{
+                  flex: 1, padding: '8px 0', borderRadius: 8, border: '2px solid',
+                  borderColor: local.modo === m ? '#0ea5e9' : 'rgba(148,163,184,0.2)',
+                  background: local.modo === m ? 'rgba(14,165,233,0.2)' : 'transparent',
+                  color: local.modo === m ? '#38bdf8' : '#64748b',
+                  cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem',
+                }}>
+                  {m === 'simulacion' ? '⚡ Simulación (seg)' : '🕒 Tiempo Real (min)'}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {/* UMBRALES SEMÁFORO */}
         <div style={{ display: 'flex', gap: 16, marginBottom: isAdmin ? 24 : 8 }}>
@@ -123,7 +151,11 @@ const ModalConfig = ({ show, config, onConfirm, onClose }: Props) => {
           }}>
             Cancelar
           </button>
-          <button onClick={() => onConfirm(local)} style={{
+          <button onClick={() => onConfirm(
+            isAdmin
+              ? local
+              : { ...local, modo: 'real', tiempoAmarillo: 60, tiempoRojo: 120, rol: 'cliente' }
+          )} style={{
             padding: '10px 24px', borderRadius: 8, border: 'none',
             background: '#16a34a', color: '#fff', fontWeight: 700, cursor: 'pointer',
             fontSize: '0.9rem',

@@ -1,5 +1,5 @@
 // src/Componentes/BahiaOverlay.tsx
-import { useState, useEffect, startTransition } from 'react';
+import { useState, useEffect } from 'react';
 import type { Camion, BahiaConfig, ConfigSimulador } from '../types';
 import { getColorEstado, NOMBRES_TIPO_CAMION } from './bahiasConfig';
 import ModalIncidencia from './ModalIncidencia';
@@ -37,22 +37,24 @@ const BahiaOverlay = ({
   const [finalizando, setFinalizando]       = useState(false);
   const [incidenciaActiva, setIncidenciaActiva] = useState(false);
   const dm = darkMode;
+  const camionId = camion?.id ?? null;
+  const camionIdDb = camion?.id_db ?? null;
 
   // Ticker semáforo — actualiza `now` cada segundo
   useEffect(() => {
-    if (!camion) return;
+    if (!camionId) return;
     const id = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(id);
-  }, [camion]);
+  }, [camionId]);
 
   // ── Alerta de incidencia abierta: polling cada 8s ──────────────────────
   // Sin Realtime — polling HTTP puro, sin costo adicional en Supabase
   useEffect(() => {
-    if (!camion?.id_db) {
-      startTransition(() => setIncidenciaActiva(false));
+    if (!camionIdDb) {
+      setIncidenciaActiva(false);
       return;
     }
-    const idCamion = Number(camion.id_db);
+    const idCamion = Number(camionIdDb);
 
     // Consulta inmediata
     fetchIncidenciaAbierta(idCamion).then(setIncidenciaActiva);
@@ -63,7 +65,7 @@ const BahiaOverlay = ({
     }, 8_000);
 
     return () => clearInterval(poller);
-  }, [camion?.id_db]);
+  }, [camionIdDb]);
 
   const ocupada = !!camion;
 
