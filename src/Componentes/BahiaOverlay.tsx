@@ -1,5 +1,6 @@
 // src/Componentes/BahiaOverlay.tsx
 import { useState, useEffect } from 'react';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { Camion, BahiaConfig, ConfigSimulador } from '../types';
 import { getColorEstado, NOMBRES_TIPO_CAMION } from './bahiasConfig';
 import ModalIncidencia from './ModalIncidencia';
@@ -27,11 +28,10 @@ interface Props {
 
 const BahiaOverlay = ({
   bahiaId, config: bay, camion, camionArrastrando,
-  simulacionActiva, modoConfig, validarFn, onDrop, onDropFromBahia,
+  simulacionActiva, modoConfig, validarFn,
   onFinalizar, formatTiempo, darkMode = true, onNotify, onIncidenciaRegistrada,
   modoAyuda = false,
 }: Props) => {
-  const [isDragOver, setIsDragOver]         = useState(false);
   const [now, setNow]                       = useState(() => Date.now());
   const [showIncidencia, setShowIncidencia] = useState(false);
   const [finalizando, setFinalizando]       = useState(false);
@@ -67,6 +67,18 @@ const BahiaOverlay = ({
   const mostrarIncidenciaActiva = Boolean(camionIdDb) && incidenciaActiva;
 
   const ocupada = !!camion;
+  const { setNodeRef, isOver } = useDroppable({ id: bahiaId });
+  const {
+    attributes: dragAttrs,
+    listeners: dragListeners,
+    setNodeRef: dragRef,
+    transform: dragTransform,
+    isDragging,
+  } = useDraggable({
+    id: `bahia-truck-${bahiaId}`,
+    disabled: !simulacionActiva || !ocupada,
+    data: { fromBahia: bahiaId },
+  });
 
   // ── Color semáforo (tiempo en cola → tiempo en bahía) ──
   let colorSemaforo = dm ? '#334155' : '#cbd5e1';
@@ -96,7 +108,7 @@ const BahiaOverlay = ({
     dropColor   = res === true ? 'rgba(22,163,74,0.30)'  : 'rgba(220,38,38,0.22)';
     borderColor = res === true ? '#22c55e'               : '#ef4444';
   }
-  if (isDragOver && !ocupada) {
+  if (isOver && !ocupada) {
     dropColor = camionArrastrando && validarFn(camionArrastrando, bahiaId) === true
       ? 'rgba(22,163,74,0.52)' : 'rgba(220,38,38,0.44)';
   }
@@ -113,6 +125,8 @@ const BahiaOverlay = ({
   return (
     <>
       <div
+        ref={setNodeRef}
+        className={isOver && simulacionActiva ? 'ring-2 ring-blue-400' : ''}
         style={{
           position: 'relative',
           width: 'clamp(110px,9vw,148px)',
@@ -126,14 +140,7 @@ const BahiaOverlay = ({
             : '0 4px 14px rgba(0,0,0,0.4)',
           transition: 'background 0.5s, border-color 0.5s, box-shadow 0.5s',
           cursor: ocupada ? 'default' : 'copy',
-        }}
-        onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setIsDragOver(true); }}
-        onDragLeave={() => setIsDragOver(false)}
-        onDrop={e => {
-          e.preventDefault(); setIsDragOver(false);
-          const fromBahia = e.dataTransfer.getData('fromBahia');
-          if (fromBahia) onDropFromBahia(fromBahia, bahiaId);
-          else onDrop(bahiaId);
+          touchAction: 'none',
         }}
       >
         {/* ── Header: nombre + punto semáforo ── */}
@@ -168,7 +175,17 @@ const BahiaOverlay = ({
 
         {ocupada && camion ? (
           // ── BAHÍA OCUPADA ──
-          <div draggable onDragStart={e => e.dataTransfer.setData('fromBahia', bahiaId)} style={{ cursor: 'grab' }}>
+          <div
+            ref={dragRef}
+            {...dragListeners}
+            {...dragAttrs}
+            style={{
+              cursor: 'grab',
+              touchAction: 'none',
+              opacity: isDragging ? 0.7 : 1,
+              transform: dragTransform ? `translate(${dragTransform.x}px, ${dragTransform.y}px)` : undefined,
+            }}
+          >
 
             <div style={{ fontWeight: 800, fontSize: 'clamp(0.74rem,0.92vw,0.9rem)', color: getColorEstado(camion.estadoAlerta), textAlign: 'center', letterSpacing: '0.03em' }}>
               {camion.placa}

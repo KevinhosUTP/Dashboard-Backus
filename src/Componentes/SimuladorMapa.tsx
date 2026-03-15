@@ -1,5 +1,16 @@
 // src/Componentes/SimuladorMapa.tsx
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { flushSync } from 'react-dom';
+import {
+  DndContext,
+  type DragEndEvent,
+  type DragStartEvent,
+  MouseSensor,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
 import type {
   Camion, ConfigSimulador, StatsSimulador,
   EstadoAlerta,
@@ -203,6 +214,15 @@ const SimuladorMapa = ({
 
   const [panelTurnos,    setPanelTurnos]    = useState<VwDashboardTurnos | null>(null);
   const [panelPromedio,  setPanelPromedio]  = useState<VwPromedioPatioNeto | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 8 },
+    }),
+    useSensor(MouseSensor),
+  );
   const modoActual = config.modo;
   const rolActual = config.rol;
   const tiempoAmarilloActual = config.tiempoAmarillo;
@@ -325,6 +345,21 @@ const SimuladorMapa = ({
     setCamionArrastrando(camion);
   };
 
+  const handleDragStartDnd = useCallback((event: DragStartEvent) => {
+    if (!simulacionActiva) return;
+    const truckId = event.active.data.current?.truckId as string | undefined;
+    if (truckId) {
+      const camion = colaRef.current.find(c => c.id === truckId);
+      if (camion) setCamionArrastrando(camion);
+      return;
+    }
+
+    const fromBahia = event.active.data.current?.fromBahia as string | undefined;
+    if (!fromBahia) return;
+    const camion = enProcesoRef.current[fromBahia];
+    if (camion) setCamionArrastrando(camion);
+  }, [simulacionActiva]);
+
   const registrarFinalizacionUnica = useCallback((camion: Camion): boolean => {
     if (camionesFinalizados.current.has(camion.id)) return false;
     camionesFinalizados.current.add(camion.id);
@@ -391,6 +426,35 @@ const SimuladorMapa = ({
       void recargarPaneles();
     }
     notify(`🔄 ${camion.placa} → ${BAHIAS_CONFIG[toBahiaId].nombre}`, 'info');
+  };
+
+  const handleDragEndDnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over) {
+      setCamionArrastrando(null);
+      return;
+    }
+
+    const truckId = active.data.current?.truckId as string | undefined;
+    const fromBahia = active.data.current?.fromBahia as string | undefined;
+    const toBahia = String(over.id);
+
+    if (truckId) {
+      const camion = colaRef.current.find(c => c.id === truckId);
+      if (!camion) {
+        setCamionArrastrando(null);
+        return;
+      }
+      flushSync(() => setCamionArrastrando(camion));
+      handleDrop(toBahia);
+      return;
+    }
+
+    if (fromBahia && fromBahia !== toBahia) {
+      handleDropFromBahia(fromBahia, toBahia);
+    }
+
+    setCamionArrastrando(null);
   };
 
   const handleFinalizar = useCallback(async (bahiaId: string, camion: Camion) => {
@@ -649,6 +713,7 @@ const SimuladorMapa = ({
         />
       </div>
 
+      <DndContext sensors={sensors} onDragStart={handleDragStartDnd} onDragEnd={handleDragEndDnd}>
       <main id="mapa-area" className={`flex-1 w-full relative ${isMobile ? 'overflow-y-auto' : 'overflow-hidden'}`}>
         {!isMobile && (
           <>
@@ -855,6 +920,7 @@ const SimuladorMapa = ({
           </div>
         )}
       </footer>
+      </DndContext>
 
       {isCompactMobile && camionDetalle && (
         <>

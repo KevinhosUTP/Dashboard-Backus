@@ -1,6 +1,7 @@
 // src/Componentes/TarjetaCamion.tsx
 // Carta de camión en la cola inferior — Tailwind CSS + Drag & Drop
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useDraggable } from '@dnd-kit/core';
 import type { Camion, ConfigSimulador } from '../types';
 import { getColorEstado, NOMBRES_TIPO_CAMION } from './bahiasConfig';
 
@@ -24,7 +25,24 @@ const TarjetaCamion = ({
   darkMode = true,
 }: Props) => {
   const [now, setNow] = useState(() => Date.now());
+  const prevDraggingRef = useRef(false);
   const dm = darkMode;
+
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `truck-${c.id}`,
+    disabled: !simulacionActiva,
+    data: { truckId: c.id },
+  });
+
+  useEffect(() => {
+    if (isDragging && !prevDraggingRef.current) {
+      onDragStart(c);
+    }
+    if (!isDragging && prevDraggingRef.current) {
+      onDragEnd();
+    }
+    prevDraggingRef.current = isDragging;
+  }, [c, isDragging, onDragEnd, onDragStart]);
 
   // Ticker para actualizar el tiempo en pantalla
   useEffect(() => {
@@ -36,21 +54,25 @@ const TarjetaCamion = ({
   const color = getColorEstado(c.estadoAlerta);
   const ms = now - c.tiempoLlegadaCola;
   const tieneIncidencia = (c.incidencias ?? 0) > 0;
+  const dragStyle = {
+    transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined,
+    opacity: isDragging ? 0.5 : 1,
+    touchAction: 'none' as const,
+    cursor: simulacionActiva ? 'grab' : 'default',
+  };
 
   return (
     <div
-      draggable={simulacionActiva}
-      onDragStart={e => {
-        e.dataTransfer.setData('truckId', c.id);
-        onDragStart(c);
-      }}
-      onDragEnd={onDragEnd}
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
       className={`
         relative w-full rounded-[9px] select-none
         transition-all duration-300 ease-in-out
         ${simulacionActiva ? 'cursor-grab active:cursor-grabbing hover:scale-[1.02]' : 'cursor-default'}
       `}
       style={{
+        ...dragStyle,
         background: dm ? 'rgba(10,16,30,0.92)' : 'rgba(255,255,255,0.95)',
         border: `2px solid ${color}`,
         padding: 'clamp(7px,0.8vh,10px) clamp(8px,0.9vw,12px)',
