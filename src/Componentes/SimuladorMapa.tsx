@@ -10,6 +10,7 @@ import type {
 import TarjetaCamion from './TarjetaCamion';
 import BahiaOverlay from './BahiaOverlay';
 import PanelFlotante from './PanelFlotante';
+import { useDraggablePanel } from '../hooks/useDraggablePanel';
 import ModalConfig from './ModalConfig';
 import ModalReporte from './ModalReporte';
 import { Header } from './Header';
@@ -338,6 +339,12 @@ const SimuladorMapa = ({
     setCamionSeleccionado(camion);
     setCamionArrastrando(camion);
   };
+
+  const abrirDetalleCamion = useCallback((camion: Camion) => {
+    if (!isMobile || !simulacionActiva) return;
+    // Reutiliza el estado existente que alimenta el detalle móvil.
+    setCamionSeleccionado(camion);
+  }, [isMobile, simulacionActiva]);
 
   const registrarFinalizacionUnica = useCallback((camion: Camion): boolean => {
     if (camionesFinalizados.current.has(camion.id)) return false;
@@ -683,6 +690,11 @@ const SimuladorMapa = ({
     </>
   );
 
+  const panelPrioridadDrag = useDraggablePanel('prioridad', { x: window.innerWidth * 0.7078, y: window.innerHeight * 0.0569 });
+  const panelPromedioDrag = useDraggablePanel('promedio', { x: window.innerWidth * 0.1744, y: window.innerHeight * 0.3138 });
+  const panelConteoDrag = useDraggablePanel('conteo', { x: window.innerWidth * 0.1744, y: window.innerHeight * 0.5793 });
+  const panelSemaforoDrag = useDraggablePanel('semaforo', { x: window.innerWidth * 0.88, y: window.innerHeight * 0.82 });
+
   return (
     <div className={`h-screen w-full flex flex-col overflow-hidden ${dm ? 'bg-[#060d1a]' : 'bg-[#e8edf5]'}`}>
 
@@ -816,25 +828,125 @@ const SimuladorMapa = ({
 
         {!isMobile && (
           <>
-            <PanelFlotante titulo="🚨 Unidad Mayor Prioridad" darkMode={darkMode}
-              style={{ top: '5.69%', left: '70.78%', width: 'clamp(160px,18vw,240px)' }}>
-              {panelPrioridadContent}
-            </PanelFlotante>
+            <div
+              style={{
+                position: 'absolute',
+                left: panelPrioridadDrag.pos.x,
+                top: panelPrioridadDrag.pos.y,
+                zIndex: 30,
+                cursor: panelPrioridadDrag.pinned ? 'default' : 'grab',
+                userSelect: 'none',
+              }}
+              onMouseDown={panelPrioridadDrag.onMouseDown}
+            >
+              <button
+                type="button"
+                onClick={panelPrioridadDrag.togglePin}
+                title={panelPrioridadDrag.pinned ? 'Desanclar para mover' : 'Anclar aquí'}
+                style={{
+                  position: 'absolute', top: 4, right: 4, zIndex: 31,
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: '1rem', opacity: panelPrioridadDrag.pinned ? 1 : 0.4,
+                }}
+              >📌</button>
+              <div style={{ cursor: 'default' }}>
+                <PanelFlotante titulo="🚨 Unidad Mayor Prioridad" darkMode={darkMode}
+                  style={{ width: 'clamp(160px,18vw,240px)' }}>
+                  {panelPrioridadContent}
+                </PanelFlotante>
+              </div>
+            </div>
 
-            <PanelFlotante titulo="⏱ Tiempo Promedio Patio" darkMode={darkMode}
-              style={{ top: '31.38%', left: '17.44%', width: 'clamp(140px,15vw,200px)' }}>
-              {panelPromedioContent}
-            </PanelFlotante>
+            <div
+              style={{
+                position: 'absolute',
+                left: panelPromedioDrag.pos.x,
+                top: panelPromedioDrag.pos.y,
+                zIndex: 30,
+                cursor: panelPromedioDrag.pinned ? 'default' : 'grab',
+                userSelect: 'none',
+              }}
+              onMouseDown={panelPromedioDrag.onMouseDown}
+            >
+              <button
+                type="button"
+                onClick={panelPromedioDrag.togglePin}
+                title={panelPromedioDrag.pinned ? 'Desanclar para mover' : 'Anclar aquí'}
+                style={{
+                  position: 'absolute', top: 4, right: 4, zIndex: 31,
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: '1rem', opacity: panelPromedioDrag.pinned ? 1 : 0.4,
+                }}
+              >📌</button>
+              <div style={{ cursor: 'default' }}>
+                <PanelFlotante titulo="⏱ Tiempo Promedio Patio" darkMode={darkMode}
+                  style={{ width: 'clamp(140px,15vw,200px)' }}>
+                  {panelPromedioContent}
+                </PanelFlotante>
+              </div>
+            </div>
 
-            <PanelFlotante titulo="🔢 Conteo por Turno" darkMode={darkMode}
-              style={{ top: '57.93%', left: '17.44%', width: 'clamp(155px,16vw,230px)' }}>
-              {panelTurnoContent}
-            </PanelFlotante>
+            <div
+              style={{
+                position: 'absolute',
+                left: panelConteoDrag.pos.x,
+                top: panelConteoDrag.pos.y,
+                zIndex: 30,
+                cursor: panelConteoDrag.pinned ? 'default' : 'grab',
+                userSelect: 'none',
+              }}
+              onMouseDown={panelConteoDrag.onMouseDown}
+            >
+              <button
+                type="button"
+                onClick={panelConteoDrag.togglePin}
+                title={panelConteoDrag.pinned ? 'Desanclar para mover' : 'Anclar aquí'}
+                style={{
+                  position: 'absolute', top: 4, right: 4, zIndex: 31,
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: '1rem', opacity: panelConteoDrag.pinned ? 1 : 0.4,
+                }}
+              >📌</button>
+              <div style={{ cursor: 'default' }}>
+                <PanelFlotante titulo="🔢 Conteo por Turno" darkMode={darkMode}
+                  style={{ width: 'clamp(155px,16vw,230px)' }}>
+                  {panelTurnoContent}
+                </PanelFlotante>
+              </div>
+            </div>
 
-            <div className={`absolute bottom-2 right-3 z-30 rounded-lg backdrop-blur-md
-              ${dm ? 'bg-slate-900/80 border border-slate-700/20 text-slate-300' : 'bg-white/90 border border-slate-200 text-slate-600'}`}
-              style={{ padding: 'clamp(5px,0.8vw,10px) clamp(8px,1vw,14px)', fontSize: 'clamp(0.6rem,0.8vw,0.74rem)' }}>
-              {semaforoContent}
+            <div
+              style={{
+                position: 'absolute',
+                left: panelSemaforoDrag.pos.x,
+                top: panelSemaforoDrag.pos.y,
+                zIndex: 30,
+                cursor: panelSemaforoDrag.pinned ? 'default' : 'grab',
+                userSelect: 'none',
+              }}
+              onMouseDown={panelSemaforoDrag.onMouseDown}
+            >
+              <button
+                type="button"
+                onClick={panelSemaforoDrag.togglePin}
+                title={panelSemaforoDrag.pinned ? 'Desanclar para mover' : 'Anclar aquí'}
+                style={{
+                  position: 'absolute', top: 4, right: 4, zIndex: 31,
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: '1rem', opacity: panelSemaforoDrag.pinned ? 1 : 0.4,
+                }}
+              >📌</button>
+              <div
+                className={`rounded-lg backdrop-blur-md
+                  ${dm ? 'bg-slate-900/80 border border-slate-700/20 text-slate-300' : 'bg-white/90 border border-slate-200 text-slate-600'}`}
+                style={{
+                  cursor: 'default',
+                  padding: 'clamp(5px,0.8vw,10px) clamp(8px,1vw,14px)',
+                  fontSize: 'clamp(0.6rem,0.8vw,0.74rem)',
+                }}
+              >
+                {semaforoContent}
+              </div>
             </div>
           </>
         )}
@@ -875,27 +987,62 @@ const SimuladorMapa = ({
             <div className="flex gap-2 overflow-x-auto px-3 py-2 scrollbar-hide"
               style={{ WebkitOverflowScrolling: 'touch' }}>
               {cola.map(camion => (
-                <button
-                  type="button"
+                <div
                   key={camion.id}
-                  className={`shrink-0 flex flex-col items-center rounded-lg px-3 py-2 min-w-[72px]
-                    border select-none ${camionSeleccionado?.id === camion.id ? 'ring-2 ring-yellow-400 scale-105 ' : ''}${
-                      dm ? 'bg-gray-800 border-gray-600' : 'bg-slate-200 border-slate-300'
-                    }`}
-                  onClick={() => handleTapCamion(camion)}
+                  className="shrink-0"
+                  style={{ display: 'flex', alignItems: 'center', gap: 4 }}
                 >
-                  <div className={`w-2 h-2 rounded-full mb-1 ${getSemaforoClase(camion.estadoAlerta)}`} />
-                  <span className={`font-bold text-xs leading-tight ${dm ? 'text-white' : 'text-slate-800'}`}>
-                    {camion.placa}
-                  </span>
-                  <span className={`text-[10px] mt-1 px-1 rounded font-medium ${
-                    camion.operacionCodigo === 'C'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-orange-600 text-white'
-                  }`}>
-                    {getEstadoOperacion(camion)}
-                  </span>
-                </button>
+                  {/* Tap izquierdo: selecciona para asignar bahia */}
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    className={`flex flex-col items-center rounded-lg px-3 py-2 min-w-[72px]
+                      border select-none ${camionSeleccionado?.id === camion.id ? 'ring-2 ring-yellow-400 scale-105 ' : ''}${
+                        dm ? 'bg-gray-800 border-gray-600' : 'bg-slate-200 border-slate-300'
+                      }`}
+                    style={{ flex: 1 }}
+                    onClick={() => handleTapCamion(camion)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleTapCamion(camion);
+                      }
+                    }}
+                  >
+                    <div className={`w-2 h-2 rounded-full mb-1 ${getSemaforoClase(camion.estadoAlerta)}`} />
+                    <span className={`font-bold text-xs leading-tight ${dm ? 'text-white' : 'text-slate-800'}`}>
+                      {camion.placa}
+                    </span>
+                    <span className={`text-[10px] mt-1 px-1 rounded font-medium ${
+                      camion.operacionCodigo === 'C'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-orange-600 text-white'
+                    }`}>
+                      {getEstadoOperacion(camion)}
+                    </span>
+                  </div>
+
+                  {/* Boton info: abre drawer de detalle */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      abrirDetalleCamion(camion);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '1rem',
+                      padding: '4px 6px',
+                      borderRadius: 6,
+                      color: darkMode ? '#94a3b8' : '#64748b',
+                      flexShrink: 0,
+                    }}
+                    title="Ver detalles"
+                    aria-label={`Ver detalles de ${camion.placa}`}
+                  >ℹ️</button>
+                </div>
               ))}
               {cola.length === 0 && simulacionActiva && (
                 <div className="self-center text-xs py-2 text-slate-500">
