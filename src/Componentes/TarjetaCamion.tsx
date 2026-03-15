@@ -14,6 +14,7 @@ interface Props {
   darkMode?: boolean;
   dragHabilitado?: boolean;
   onTap?: () => void;
+  onInfo?: () => void;
   seleccionado?: boolean;
 }
 
@@ -27,6 +28,7 @@ const TarjetaCamion = ({
   darkMode = true,
   dragHabilitado,
   onTap,
+  onInfo,
   seleccionado = false,
 }: Props) => {
   const [now, setNow] = useState(() => Date.now());
@@ -78,11 +80,40 @@ const TarjetaCamion = ({
         }}
       />
 
+      {onInfo && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onInfo();
+          }}
+          style={{
+            position: 'absolute',
+            top: 4,
+            right: 22,
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '1rem',
+            padding: '4px 6px',
+            borderRadius: 6,
+            color: darkMode ? '#94a3b8' : '#64748b',
+            flexShrink: 0,
+            zIndex: 2,
+          }}
+          title="Ver detalles"
+          aria-label={`Ver detalles de ${c.placa}`}
+        >ℹ️</button>
+      )}
+
       {/* Ícono de incidencia activa */}
       {tieneIncidencia && (
         <div
-          className="absolute top-2 right-6 text-amber-400"
-          style={{ fontSize: 'clamp(0.6rem,0.75vw,0.75rem)' }}
+          className="absolute top-2 text-amber-400"
+          style={{
+            right: onInfo ? 50 : 24,
+            fontSize: 'clamp(0.6rem,0.75vw,0.75rem)',
+          }}
           title={`${c.incidencias} incidencia(s) activa(s)`}
         >
           ⚠️

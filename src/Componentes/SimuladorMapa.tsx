@@ -185,6 +185,7 @@ const SimuladorMapa = ({
   const [isMobile, setIsMobile]                         = useState(window.innerWidth < 1024);
   const [isCompactMobile, setIsCompactMobile]           = useState(window.innerWidth < 768);
   const [camionSeleccionado, setCamionSeleccionado]     = useState<Camion | null>(null);
+  const [camionDetalle, setCamionDetalle]               = useState<Camion | null>(null);
 
   const colaRef        = useRef<Camion[]>([]);
   const enProcesoRef   = useRef<Record<string, Camion>>({});
@@ -232,6 +233,7 @@ const SimuladorMapa = ({
     if (!simulacionActiva || !isMobile) {
       setCamionSeleccionado(null);
       setCamionArrastrando(null);
+      setCamionDetalle(null);
     }
   }, [isMobile, simulacionActiva]);
 
@@ -342,8 +344,7 @@ const SimuladorMapa = ({
 
   const abrirDetalleCamion = useCallback((camion: Camion) => {
     if (!isMobile || !simulacionActiva) return;
-    // Reutiliza el estado existente que alimenta el detalle móvil.
-    setCamionSeleccionado(camion);
+    setCamionDetalle(camion);
   }, [isMobile, simulacionActiva]);
 
   const registrarFinalizacionUnica = useCallback((camion: Camion): boolean => {
@@ -497,6 +498,7 @@ const SimuladorMapa = ({
       camionesFinalizados.current.clear();
       setCamionSeleccionado(null);
       setCamionArrastrando(null);
+      setCamionDetalle(null);
       setSimulacionActiva(false); setCola([]); setEnProceso({});
       notify('👋 Sesión cerrada', 'info');
       // Pequeño delay para que el toast sea visible antes de volver al login
@@ -711,6 +713,7 @@ const SimuladorMapa = ({
             else {
               setCamionSeleccionado(null);
               setCamionArrastrando(null);
+              setCamionDetalle(null);
               setSimulacionActiva(false); setShowReport(true);
             }
           }}
@@ -719,6 +722,7 @@ const SimuladorMapa = ({
           onCancelarSeleccion={() => {
             setCamionSeleccionado(null);
             setCamionArrastrando(null);
+            setCamionDetalle(null);
           }}
         />
       </div>
@@ -1063,6 +1067,7 @@ const SimuladorMapa = ({
                   darkMode={darkMode}
                   dragHabilitado={simulacionActiva && !isMobile}
                   onTap={isMobile ? () => handleTapCamion(c) : undefined}
+                  onInfo={isMobile && !isCompactMobile ? () => abrirDetalleCamion(c) : undefined}
                   seleccionado={isMobile && camionSeleccionado?.id === c.id}
                 />
               ))}
@@ -1088,12 +1093,65 @@ const SimuladorMapa = ({
           camionesFinalizados.current.clear();
           setCamionSeleccionado(null);
           setCamionArrastrando(null);
+          setCamionDetalle(null);
           setCola([]); setEnProceso({});
           setStats({ atendidosTurno1: 0, atendidosTurno2: 0, atendidosTurno3: 0, total: 0, tiemposTotalPatio: [] });
           notify('🚀 Sesión iniciada', 'success');
         }}
         onClose={() => setShowConfig(false)}
       />
+
+      {isMobile && camionDetalle && (
+        <div
+          className="fixed inset-0 z-[600] bg-black/60 flex items-end lg:hidden"
+          onClick={() => setCamionDetalle(null)}
+        >
+          <div
+            className={`w-full rounded-t-2xl border-t p-4 ${dm ? 'bg-slate-900 border-slate-700 text-slate-200' : 'bg-white border-slate-200 text-slate-700'}`}
+            style={{ maxHeight: '72vh', overflowY: 'auto' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold" style={{ fontSize: '0.95rem' }}>Detalle de unidad</h3>
+              <button
+                type="button"
+                onClick={() => setCamionDetalle(null)}
+                className="rounded px-2 py-1"
+                style={{ fontSize: '0.85rem' }}
+              >Cerrar</button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2" style={{ fontSize: '0.8rem' }}>
+              <div className={dm ? 'text-slate-400' : 'text-slate-500'}>Placa</div>
+              <div className="font-semibold">{camionDetalle.placa}</div>
+
+              <div className={dm ? 'text-slate-400' : 'text-slate-500'}>Operación</div>
+              <div className="font-semibold">{getEstadoOperacion(camionDetalle)}</div>
+
+              <div className={dm ? 'text-slate-400' : 'text-slate-500'}>Tipo</div>
+              <div className="font-semibold">{camionDetalle.tipoCodigo}</div>
+
+              <div className={dm ? 'text-slate-400' : 'text-slate-500'}>Producto</div>
+              <div className="font-semibold">{camionDetalle.producto}</div>
+
+              <div className={dm ? 'text-slate-400' : 'text-slate-500'}>Propietario</div>
+              <div className="font-semibold">{camionDetalle.propietario}</div>
+
+              <div className={dm ? 'text-slate-400' : 'text-slate-500'}>Estado semáforo</div>
+              <div className="font-semibold uppercase">{camionDetalle.estadoAlerta}</div>
+
+              <div className={dm ? 'text-slate-400' : 'text-slate-500'}>Ubicación</div>
+              <div className="font-semibold">{camionDetalle.bahiaActual ?? 'En cola'}</div>
+
+              <div className={dm ? 'text-slate-400' : 'text-slate-500'}>Tiempo en cola</div>
+              <div className="font-semibold">{formatTiempo(Math.max(0, Date.now() - camionDetalle.tiempoLlegadaCola), config.modo)}</div>
+
+              <div className={dm ? 'text-slate-400' : 'text-slate-500'}>Incidencias</div>
+              <div className="font-semibold">{camionDetalle.incidencias ?? 0}</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* En simulación usa métricas de sesión; en real usa métricas del día vía Supabase */}
       <ModalReporte
