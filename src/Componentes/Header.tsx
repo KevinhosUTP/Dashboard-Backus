@@ -30,7 +30,7 @@ const Toggle = ({
       padding: '4px 0', userSelect: 'none',
     }}
   >
-    <span style={{
+    <span className="hidden min-[391px]:inline" style={{
       fontSize: '0.75rem', fontWeight: 600,
       color: activo ? colorOn : '#64748b',
       transition: 'color 0.2s',
@@ -70,18 +70,18 @@ export const Header = ({
   const rolLabel  = rol === 'admin' ? '👑 Administrador'      : '👁 Cliente';
 
   return (
-    <header className="w-full z-50 flex items-center justify-between px-6 py-3 bg-[#0f172a] shadow-md">
+    <header className="w-full z-50 flex flex-col md:flex-row md:items-center md:justify-between gap-2 px-4 md:px-6 py-3 bg-[#0f172a] shadow-md">
 
       {/* ── Marca + badge de rol ── */}
-      <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-center gap-3 min-w-0 w-full md:w-auto">
         <img
           src="/logoBackus.png"
           alt="Backus"
           style={{ height: 36, objectFit: 'contain', flexShrink: 0 }}
         />
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h1 className="font-bold text-xl text-white leading-tight truncate">
+          <div className="flex items-center gap-2 min-w-0">
+            <h1 className="font-bold text-white leading-tight" style={{ fontSize: 'clamp(0.85rem, 1.5vw, 1.25rem)' }}>
               Gestión de camiones Backus
             </h1>
             <span style={{
@@ -96,7 +96,7 @@ export const Header = ({
             {/* Nombre del usuario logueado */}
             <span style={{ color: rolColor, fontWeight: 600 }}>{nombreUsuario}</span>
             <span className="text-slate-600">·</span>
-            <span>Modo {config.modo === 'real' ? 'Real' : 'Simulación'}</span>
+            <span className="hidden md:flex">Modo {config.modo === 'real' ? 'Real' : 'Simulación'}</span>
             {simulacionActiva && <span className="text-green-400 font-semibold">● Activo</span>}
             {rol === 'cliente' && (
               <span style={{ color: '#475569', fontSize: '0.68rem' }}>
@@ -108,16 +108,18 @@ export const Header = ({
       </div>
 
       {/* ── Controles ── */}
-      <div className="flex items-center gap-4 shrink-0">
+      <div className="flex items-center justify-end md:justify-start gap-2 md:gap-4 shrink-0 w-full md:w-auto flex-wrap">
 
         {/* Toggle Modo Ayuda — solo ilumina las bahías cuando está activo */}
-        <Toggle
-          activo={modoAyuda}
-          onToggle={onToggleModoAyuda}
-          labelOn="Ayuda ON"
-          labelOff="Ayuda OFF"
-          colorOn="#f59e0b"
-        />
+        <div className="hidden md:flex">
+          <Toggle
+            activo={modoAyuda}
+            onToggle={onToggleModoAyuda}
+            labelOn="Ayuda ON"
+            labelOff="Ayuda OFF"
+            colorOn="#f59e0b"
+          />
+        </div>
 
         {/* Toggle Dark / Light mode */}
         <Toggle
@@ -130,13 +132,13 @@ export const Header = ({
 
         {/* Reporte */}
         <button onClick={onReporte}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-violet-600 text-white hover:bg-violet-500 transition-colors duration-200 select-none">
+          className="flex items-center gap-2 px-2 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium bg-violet-600 text-white hover:bg-violet-500 transition-colors duration-200 select-none">
           📊 Reporte
         </button>
 
         {/* Iniciar / Detener */}
         <button onClick={onIniciar}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors duration-200 select-none ${
+          className={`flex items-center gap-2 px-2 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium text-white transition-colors duration-200 select-none ${
             simulacionActiva ? 'bg-red-600 hover:bg-red-500' : 'bg-green-600 hover:bg-green-500'
           }`}>
           {simulacionActiva ? '⏹ Detener' : '▶ Iniciar'}
@@ -144,7 +146,7 @@ export const Header = ({
 
         {/* Cerrar Sesión */}
         <button onClick={onCerrarSesion}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-gray-800 text-slate-400 hover:bg-red-900/40 hover:text-red-400 transition-colors duration-200 select-none">
+          className="flex items-center gap-2 px-2 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium bg-gray-800 text-slate-400 hover:bg-red-900/40 hover:text-red-400 transition-colors duration-200 select-none">
           🚪 Cerrar Sesión
         </button>
       </div>

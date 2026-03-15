@@ -176,6 +176,7 @@ const SimuladorMapa = ({
   const [camionArrastrando, setCamionArrastrando]       = useState<Camion | null>(null);
   const [toasts, setToasts]                             = useState<{ id: number; msg: string; tipo: string }[]>([]);
   const [alertaMaxIncidencias, setAlertaMaxIncidencias] = useState(false);
+  const [isMobile, setIsMobile]                         = useState(window.innerWidth < 1024);
 
   const colaRef        = useRef<Camion[]>([]);
   const enProcesoRef   = useRef<Record<string, Camion>>({});
@@ -208,6 +209,12 @@ const SimuladorMapa = ({
 
   useEffect(() => { colaRef.current = cola; },           [cola]);
   useEffect(() => { enProcesoRef.current = enProceso; }, [enProceso]);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 1024);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // ── useEffect principal: switch entre Modo Ajuste Real y Modo Simulación ──
   useEffect(() => {
@@ -491,6 +498,106 @@ const SimuladorMapa = ({
     ? (dm ? 'rgba(6,13,26,0.10)' : 'rgba(240,245,255,0.05)')
     : (dm ? 'rgba(6,13,26,0.28)' : 'rgba(240,245,255,0.15)');
 
+  const panelPrioridadContent = !simulacionActiva ? (
+    <span className={dm ? 'text-slate-600' : 'text-slate-400'} style={{ fontSize: '0.75rem' }}>
+      — Iniciar para ver datos —
+    </span>
+  ) : prioridadUI ? (
+    <div>
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className="font-extrabold tracking-wider text-red-400"
+          style={{ fontSize: 'clamp(0.9rem,1.5vw,1.1rem)' }}>
+          {prioridadUI.tracto}
+        </span>
+        <span className="rounded-full px-2 py-0.5 font-bold text-black bg-red-400"
+          style={{ fontSize: 'clamp(0.6rem,0.9vw,0.72rem)' }}>
+          ⏱ {prioridadUI.tiempoTexto}
+        </span>
+      </div>
+      <div className={`leading-relajada ${dm ? 'text-slate-400' : 'text-slate-500'}`}
+        style={{ fontSize: 'clamp(0.6rem,0.85vw,0.73rem)' }}>
+        <div>🕐 Llegada: {prioridadUI.hora_llegada ?? '—'}</div>
+        <div>📍 Bahía: {prioridadUI.bahia_actual ?? 'En cola'}</div>
+      </div>
+    </div>
+  ) : (
+    <span className={dm ? 'text-slate-500' : 'text-slate-400'} style={{ fontSize: '0.8rem' }}>
+      Sin unidades en cola
+    </span>
+  );
+
+  const panelPromedioContent = !simulacionActiva ? (
+    <div className={`text-center ${dm ? 'text-slate-600' : 'text-slate-400'}`}
+      style={{ fontSize: '0.75rem' }}>
+      — Iniciar para ver datos —
+    </div>
+  ) : promedioPatioUI != null ? (
+    <>
+      <div className="font-extrabold text-sky-400 text-center leading-none"
+        style={{ fontSize: 'clamp(1.4rem,2.5vw,2rem)' }}>
+        {promedioPatioUI.toFixed(1)}
+        <span className="font-normal ml-1 text-slate-400" style={{ fontSize: 'clamp(0.7rem,1vw,0.9rem)' }}>min</span>
+      </div>
+      <div className={`text-center mt-1 ${dm ? 'text-slate-500' : 'text-slate-400'}`}
+        style={{ fontSize: 'clamp(0.52rem,0.7vw,0.65rem)' }}>
+        {config.modo === 'simulacion'
+          ? 'promedio neto de la sesión'
+          : (promedioEsFallbackLocal ? 'promedio local (esperando sincronización del día)' : 'promedio neto del día')}
+      </div>
+      <div className="text-green-400 text-center mt-1" style={{ fontSize: '0.58rem' }}>
+        {config.modo === 'simulacion' ? '✓ basado en unidades de la sesión' : '✓ incidencias descontadas'}
+      </div>
+    </>
+  ) : (
+    <div className={`text-center ${dm ? 'text-slate-500' : 'text-slate-400'}`}
+      style={{ fontSize: 'clamp(0.72rem,0.9vw,0.82rem)' }}>
+      Sin finalizados hoy
+    </div>
+  );
+
+  const panelTurnoContent = !simulacionActiva ? (
+    <div className={`text-center ${dm ? 'text-slate-600' : 'text-slate-400'}`}
+      style={{ fontSize: '0.75rem' }}>
+      — Iniciar para ver datos —
+    </div>
+  ) : (
+    <div className="flex gap-4 justify-center">
+      {([
+        { key: 'T1', campo: 'turno_1' as const, rango: '07:00–15:00' },
+        { key: 'T2', campo: 'turno_2' as const, rango: '15:01–23:00' },
+        { key: 'T3', campo: 'turno_3' as const, rango: '23:01–06:59' },
+      ] as const).map(({ key, campo, rango }) => (
+        <div key={key} className="text-center">
+          <div className="font-extrabold text-violet-400 leading-none"
+            style={{ fontSize: 'clamp(1.2rem,2vw,1.7rem)' }}>
+            {turnosUI[campo]}
+          </div>
+          <div className={`mt-0.5 ${dm ? 'text-slate-500' : 'text-slate-400'}`}
+            style={{ fontSize: 'clamp(0.52rem,0.7vw,0.68rem)' }}>{key}</div>
+          <div className={dm ? 'text-slate-600' : 'text-slate-400'}
+            style={{ fontSize: 'clamp(0.46rem,0.58vw,0.58rem)' }}>{rango}</div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const semaforoContent = (
+    <>
+      <div className={`font-bold mb-1 uppercase tracking-widest ${dm ? 'text-slate-500' : 'text-slate-400'}`}
+        style={{ fontSize: 'clamp(0.55rem,0.7vw,0.65rem)' }}>Semáforo de Espera</div>
+      {[
+        { color: '#22c55e', label: `Verde ≤ ${semaforoLimites.tiempoAmarillo - 1} ${config.modo === 'simulacion' ? 's' : 'min'}` },
+        { color: '#eab308', label: `Amarillo ${semaforoLimites.tiempoAmarillo}–${semaforoLimites.tiempoRojo - 1} ${config.modo === 'simulacion' ? 's' : 'min'}` },
+        { color: '#ef4444', label: `Rojo ≥ ${semaforoLimites.tiempoRojo} ${config.modo === 'simulacion' ? 's' : 'min'}` },
+      ].map(l => (
+        <div key={l.color} className="flex items-center gap-1.5 mt-0.5">
+          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: l.color }} />
+          {l.label}
+        </div>
+      ))}
+    </>
+  );
+
   return (
     <div className={`h-screen w-full flex flex-col overflow-hidden ${dm ? 'bg-[#060d1a]' : 'bg-[#e8edf5]'}`}>
 
@@ -510,148 +617,106 @@ const SimuladorMapa = ({
         />
       </div>
 
-      <main id="mapa-area" className="flex-1 w-full relative overflow-hidden">
-        <div className="absolute inset-0" style={{
-          backgroundImage: 'url(/patio.png)',
-          backgroundSize: '100% 100%', backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat', filter: imgFilter,
-          transition: 'filter 0.6s ease', zIndex: 0,
-        }} />
-        <div className="absolute inset-0" style={{ background: veilBg, transition: 'background 0.6s ease', zIndex: 1 }} />
+      <main id="mapa-area" className={`flex-1 w-full relative ${isMobile ? 'overflow-y-auto' : 'overflow-hidden'}`}>
+        {!isMobile && (
+          <>
+            <div className="absolute inset-0" style={{
+              backgroundImage: 'url(/patio.png)',
+              backgroundSize: '100% 100%', backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat', filter: imgFilter,
+              transition: 'filter 0.6s ease', zIndex: 0,
+            }} />
+            <div className="absolute inset-0" style={{ background: veilBg, transition: 'background 0.6s ease', zIndex: 1 }} />
+          </>
+        )}
 
-        {Object.entries(BAHIAS_CONFIG).map(([id, bay]) => (
-          <div key={id} className="absolute z-20" style={{ left: `${bay.posX}%`, top: `${bay.posY}%` }}>
-            <BahiaOverlay
-              bahiaId={id} config={bay}
-              camion={enProceso[id] || null}
-              camionArrastrando={camionArrastrando}
-              validarFn={validarAsignacion}
-              onDrop={handleDrop}
-              onDropFromBahia={handleDropFromBahia}
-              onFinalizar={handleFinalizar}
-              simulacionActiva={simulacionActiva}
-              modoConfig={config}
-              formatTiempo={formatTiempo}
-              darkMode={darkMode}
-              onNotify={notify}
-              onIncidenciaRegistrada={handleIncidenciaRegistrada}
-              modoAyuda={modoAyuda}
-            />
+        {isMobile ? (
+          <div className="relative z-20 grid grid-cols-2 md:grid-cols-3 gap-3 p-4 overflow-y-auto">
+            {Object.entries(BAHIAS_CONFIG).map(([id, bay]) => (
+              <div key={id} className="min-h-[120px]">
+                <BahiaOverlay
+                  bahiaId={id} config={bay}
+                  camion={enProceso[id] || null}
+                  camionArrastrando={camionArrastrando}
+                  validarFn={validarAsignacion}
+                  onDrop={handleDrop}
+                  onDropFromBahia={handleDropFromBahia}
+                  onFinalizar={handleFinalizar}
+                  simulacionActiva={simulacionActiva}
+                  modoConfig={config}
+                  formatTiempo={formatTiempo}
+                  darkMode={darkMode}
+                  onNotify={notify}
+                  onIncidenciaRegistrada={handleIncidenciaRegistrada}
+                  modoAyuda={modoAyuda}
+                />
+              </div>
+            ))}
           </div>
-        ))}
+        ) : (
+          Object.entries(BAHIAS_CONFIG).map(([id, bay]) => (
+            <div key={id} className="absolute z-20" style={{ left: `${bay.posX}%`, top: `${bay.posY}%` }}>
+              <BahiaOverlay
+                bahiaId={id} config={bay}
+                camion={enProceso[id] || null}
+                camionArrastrando={camionArrastrando}
+                validarFn={validarAsignacion}
+                onDrop={handleDrop}
+                onDropFromBahia={handleDropFromBahia}
+                onFinalizar={handleFinalizar}
+                simulacionActiva={simulacionActiva}
+                modoConfig={config}
+                formatTiempo={formatTiempo}
+                darkMode={darkMode}
+                onNotify={notify}
+                onIncidenciaRegistrada={handleIncidenciaRegistrada}
+                modoAyuda={modoAyuda}
+              />
+            </div>
+          ))
+        )}
 
-        {/* Panel 1 — Unidad mayor prioridad */}
-        <PanelFlotante titulo="🚨 Unidad Mayor Prioridad" darkMode={darkMode}
-          style={{ top: '5.69%', left: '70.78%', width: 'clamp(160px,18vw,240px)' }}>
-          {!simulacionActiva ? (
-            <span className={dm ? 'text-slate-600' : 'text-slate-400'} style={{ fontSize: '0.75rem' }}>
-              — Iniciar para ver datos —
-            </span>
-          ) : prioridadUI ? (
-            <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className="font-extrabold tracking-wider text-red-400"
-                  style={{ fontSize: 'clamp(0.9rem,1.5vw,1.1rem)' }}>
-                  {prioridadUI.tracto}
-                </span>
-                <span className="rounded-full px-2 py-0.5 font-bold text-black bg-red-400"
-                  style={{ fontSize: 'clamp(0.6rem,0.9vw,0.72rem)' }}>
-                  ⏱ {prioridadUI.tiempoTexto}
-                </span>
-              </div>
-              <div className={`leading-relajada ${dm ? 'text-slate-400' : 'text-slate-500'}`}
-                style={{ fontSize: 'clamp(0.6rem,0.85vw,0.73rem)' }}>
-                <div>🕐 Llegada: {prioridadUI.hora_llegada ?? '—'}</div>
-                <div>📍 Bahía: {prioridadUI.bahia_actual ?? 'En cola'}</div>
-              </div>
+        {isMobile ? (
+          <div className="flex flex-col gap-3 p-4">
+            <PanelFlotante titulo="🚨 Unidad Mayor Prioridad" darkMode={darkMode}>
+              {panelPrioridadContent}
+            </PanelFlotante>
+            <PanelFlotante titulo="⏱ Tiempo Promedio Patio" darkMode={darkMode}>
+              {panelPromedioContent}
+            </PanelFlotante>
+            <PanelFlotante titulo="🔢 Conteo por Turno" darkMode={darkMode}>
+              {panelTurnoContent}
+            </PanelFlotante>
+            <div className={`rounded-lg backdrop-blur-md
+              ${dm ? 'bg-slate-900/80 border border-slate-700/20 text-slate-300' : 'bg-white/90 border border-slate-200 text-slate-600'}`}
+              style={{ padding: 'clamp(5px,0.8vw,10px) clamp(8px,1vw,14px)', fontSize: 'clamp(0.6rem,0.8vw,0.74rem)' }}>
+              {semaforoContent}
             </div>
-          ) : (
-            <span className={dm ? 'text-slate-500' : 'text-slate-400'} style={{ fontSize: '0.8rem' }}>
-              Sin unidades en cola
-            </span>
-          )}
-        </PanelFlotante>
+          </div>
+        ) : (
+          <>
+            <PanelFlotante titulo="🚨 Unidad Mayor Prioridad" darkMode={darkMode}
+              style={{ top: '5.69%', left: '70.78%', width: 'clamp(160px,18vw,240px)' }}>
+              {panelPrioridadContent}
+            </PanelFlotante>
 
-        {/* Panel 2 — Tiempo promedio patio */}
-        <PanelFlotante titulo="⏱ Tiempo Promedio Patio" darkMode={darkMode}
-          style={{ top: '31.38%', left: '17.44%', width: 'clamp(140px,15vw,200px)' }}>
-          {!simulacionActiva ? (
-            <div className={`text-center ${dm ? 'text-slate-600' : 'text-slate-400'}`}
-              style={{ fontSize: '0.75rem' }}>
-              — Iniciar para ver datos —
-            </div>
-          ) : promedioPatioUI != null ? (
-            <>
-              <div className="font-extrabold text-sky-400 text-center leading-none"
-                style={{ fontSize: 'clamp(1.4rem,2.5vw,2rem)' }}>
-                {promedioPatioUI.toFixed(1)}
-                <span className="font-normal ml-1 text-slate-400" style={{ fontSize: 'clamp(0.7rem,1vw,0.9rem)' }}>min</span>
-              </div>
-              <div className={`text-center mt-1 ${dm ? 'text-slate-500' : 'text-slate-400'}`}
-                style={{ fontSize: 'clamp(0.52rem,0.7vw,0.65rem)' }}>
-                {config.modo === 'simulacion'
-                  ? 'promedio neto de la sesión'
-                  : (promedioEsFallbackLocal ? 'promedio local (esperando sincronización del día)' : 'promedio neto del día')}
-              </div>
-              <div className="text-green-400 text-center mt-1" style={{ fontSize: '0.58rem' }}>
-                {config.modo === 'simulacion' ? '✓ basado en unidades de la sesión' : '✓ incidencias descontadas'}
-              </div>
-            </>
-          ) : (
-            <div className={`text-center ${dm ? 'text-slate-500' : 'text-slate-400'}`}
-              style={{ fontSize: 'clamp(0.72rem,0.9vw,0.82rem)' }}>
-              Sin finalizados hoy
-            </div>
-          )}
-        </PanelFlotante>
+            <PanelFlotante titulo="⏱ Tiempo Promedio Patio" darkMode={darkMode}
+              style={{ top: '31.38%', left: '17.44%', width: 'clamp(140px,15vw,200px)' }}>
+              {panelPromedioContent}
+            </PanelFlotante>
 
-        {/* Panel 3 — Conteo por turno */}
-        <PanelFlotante titulo="🔢 Conteo por Turno" darkMode={darkMode}
-          style={{ top: '57.93%', left: '17.44%', width: 'clamp(155px,16vw,230px)' }}>
-          {!simulacionActiva ? (
-            <div className={`text-center ${dm ? 'text-slate-600' : 'text-slate-400'}`}
-              style={{ fontSize: '0.75rem' }}>
-              — Iniciar para ver datos —
-            </div>
-          ) : (
-            <div className="flex gap-4 justify-center">
-              {([
-                { key: 'T1', campo: 'turno_1' as const, rango: '07:00–15:00' },
-                { key: 'T2', campo: 'turno_2' as const, rango: '15:01–23:00' },
-                { key: 'T3', campo: 'turno_3' as const, rango: '23:01–06:59' },
-              ] as const).map(({ key, campo, rango }) => (
-                <div key={key} className="text-center">
-                  <div className="font-extrabold text-violet-400 leading-none"
-                    style={{ fontSize: 'clamp(1.2rem,2vw,1.7rem)' }}>
-                    {turnosUI[campo]}
-                  </div>
-                  <div className={`mt-0.5 ${dm ? 'text-slate-500' : 'text-slate-400'}`}
-                    style={{ fontSize: 'clamp(0.52rem,0.7vw,0.68rem)' }}>{key}</div>
-                  <div className={dm ? 'text-slate-600' : 'text-slate-400'}
-                    style={{ fontSize: 'clamp(0.46rem,0.58vw,0.58rem)' }}>{rango}</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </PanelFlotante>
+            <PanelFlotante titulo="🔢 Conteo por Turno" darkMode={darkMode}
+              style={{ top: '57.93%', left: '17.44%', width: 'clamp(155px,16vw,230px)' }}>
+              {panelTurnoContent}
+            </PanelFlotante>
 
-        {/* Leyenda semáforo */}
-        <div className={`absolute bottom-2 right-3 z-30 rounded-lg backdrop-blur-md
-          ${dm ? 'bg-slate-900/80 border border-slate-700/20 text-slate-300' : 'bg-white/90 border border-slate-200 text-slate-600'}`}
-          style={{ padding: 'clamp(5px,0.8vw,10px) clamp(8px,1vw,14px)', fontSize: 'clamp(0.6rem,0.8vw,0.74rem)' }}>
-          <div className={`font-bold mb-1 uppercase tracking-widest ${dm ? 'text-slate-500' : 'text-slate-400'}`}
-            style={{ fontSize: 'clamp(0.55rem,0.7vw,0.65rem)' }}>Semáforo de Espera</div>
-          {[
-            { color: '#22c55e', label: `Verde ≤ ${semaforoLimites.tiempoAmarillo - 1} ${config.modo === 'simulacion' ? 's' : 'min'}` },
-            { color: '#eab308', label: `Amarillo ${semaforoLimites.tiempoAmarillo}–${semaforoLimites.tiempoRojo - 1} ${config.modo === 'simulacion' ? 's' : 'min'}` },
-            { color: '#ef4444', label: `Rojo ≥ ${semaforoLimites.tiempoRojo} ${config.modo === 'simulacion' ? 's' : 'min'}` },
-          ].map(l => (
-            <div key={l.color} className="flex items-center gap-1.5 mt-0.5">
-              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: l.color }} />
-              {l.label}
+            <div className={`absolute bottom-2 right-3 z-30 rounded-lg backdrop-blur-md
+              ${dm ? 'bg-slate-900/80 border border-slate-700/20 text-slate-300' : 'bg-white/90 border border-slate-200 text-slate-600'}`}
+              style={{ padding: 'clamp(5px,0.8vw,10px) clamp(8px,1vw,14px)', fontSize: 'clamp(0.6rem,0.8vw,0.74rem)' }}>
+              {semaforoContent}
             </div>
-          ))}
-        </div>
+          </>
+        )}
 
         {/* Toasts */}
         <div className="absolute left-4 bottom-4 z-[999] flex flex-col gap-1.5 pointer-events-none">

@@ -14,7 +14,7 @@ const PanelFlotante = ({ titulo, children, style, darkMode = true }: Props) => {
   return (
     <div
       className={`
-        absolute z-[25] rounded-xl
+        lg:absolute relative z-[25] rounded-xl
         border-t-2 border-sky-400/40
         backdrop-blur-xl
         transition-colors duration-300

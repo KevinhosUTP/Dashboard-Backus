@@ -50,10 +50,7 @@ const BahiaOverlay = ({
   // ── Alerta de incidencia abierta: polling cada 8s ──────────────────────
   // Sin Realtime — polling HTTP puro, sin costo adicional en Supabase
   useEffect(() => {
-    if (!camionIdDb) {
-      setIncidenciaActiva(false);
-      return;
-    }
+    if (!camionIdDb) return;
     const idCamion = Number(camionIdDb);
 
     // Consulta inmediata
@@ -66,6 +63,8 @@ const BahiaOverlay = ({
 
     return () => clearInterval(poller);
   }, [camionIdDb]);
+
+  const mostrarIncidenciaActiva = Boolean(camionIdDb) && incidenciaActiva;
 
   const ocupada = !!camion;
 
@@ -148,7 +147,7 @@ const BahiaOverlay = ({
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             {/* Ícono de incidencia abierta — pulsante mientras no haya hora_fin */}
-            {incidenciaActiva && (
+            {mostrarIncidenciaActiva && (
               <span style={{
                 fontSize: '0.65rem',
                 animation: 'pulse 1s infinite',
