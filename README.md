@@ -15,9 +15,9 @@ Este proyecto es un Producto Mínimo Viable (MVP) diseñado para optimizar y sim
 * **Mapa Satelital Interactivo (UI/UX):** La interfaz está estructurada en tres secciones principales utilizando una imagen satelital de la planta de fondo. Las bahías están mapeadas con coordenadas absolutas para reflejar la realidad operativa.
 * **Drag & Drop Logístico:** Los usuarios pueden arrastrar las tarjetas de los camiones (mostrando datos como Parihuelero, Bitren, etc.) desde la cola de espera inferior hacia las bahías correspondientes.
 * **Sistema de Semáforo de Tiempos:** Monitoreo visual del tiempo en patio con colores dinámicos:
-   * 🟢 **Verde** (≤ 60 min)
-   * 🟡 **Amarillo** (61 - 120 min)
-   * 🔴 **Rojo** (≥ 121 min)
+   * 🟢 **Verde** (≤ 60 min).
+   * 🟡 **Amarillo** (61 - 120 min).
+   * 🔴 **Rojo** (≥ 121 min).
 * **Dashboard Central:** Paneles flotantes semitransparentes que exhiben información vital, como la unidad con mayor prioridad, tiempo promedio global en patio y unidades atendidas por turnos (T1, T2, T3).
 * **Gestión de Incidencias:** Controles interactivos por unidad para registrar el inicio y fin de una incidencia. El sistema admite un máximo de 3 incidencias por camión antes de emitir una alerta crítica.
 * **Administración por Roles:** Distinción estricta entre `Administrador` (con privilegios de edición en rangos de tiempo y configuración) y `Cliente` (modo de solo lectura).
