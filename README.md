@@ -1,4 +1,4 @@
-# 🚛 Sistema de Gestión de Patio - Backus 2.0
+# 🚛 Sistema de Optimización y Asignación - Backus 2.0
 
 Este proyecto es un Producto Mínimo Viable (MVP) diseñado para optimizar y simular la asignación de camiones a las distintas bahías de la planta. La aplicación proporciona una interfaz gráfica robusta que funciona sobre un mapa satelital interactivo en tiempo real.
 
