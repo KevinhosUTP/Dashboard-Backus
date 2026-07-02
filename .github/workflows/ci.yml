@@ -1,0 +1,21 @@
+name: Integración Continua - Docker
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout del repositorio
+      uses: actions/checkout@v3
+
+    - name: Configurar Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Construir contenedor de prueba
+      run: docker build -t backus-app:latest .
