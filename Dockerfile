@@ -7,13 +7,8 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install
 
-# Copiamos el resto del código
+# Copiamos el resto del código (AQUÍ COPIARÁ EL .env.production AUTOMÁTICAMENTE)
 COPY . .
-
-# --- OPCIÓN NUCLEAR: CLAVES DIRECTAS ---
-ENV VITE_SUPABASE_URL="https://gwedhslwoexyjitkmeke.supabase.co/rest/v1/"
-ENV VITE_SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd3ZWRoc2x3b2V4eWppdGttZWtlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxNDU3NTIsImV4cCI6MjA4MDcyMTc1Mn0.jCUlETAbcxp9--NmCfjBV_9cUZve8xqsBfgTmaxJ7aM"
-# ---------------------------------------
 
 # Construimos la aplicación
 RUN npm run build
